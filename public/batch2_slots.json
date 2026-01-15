@@ -1,0 +1,147 @@
+{
+  "P1": [
+    { "day": 1, "period": 1 }
+  ],
+  "P2": [
+    { "day": 1, "period": 2 }
+  ],
+  "P3": [
+    { "day": 1, "period": 3 }
+  ],
+  "P4": [
+    { "day": 1, "period": 4 }
+  ],
+  "P5": [
+    { "day": 1, "period": 5 }
+  ],
+  "P16": [
+    { "day": 2, "period": 6 }
+  ],
+  "P17": [
+    { "day": 2, "period": 7 }
+  ],
+  "P18": [
+    { "day": 2, "period": 8 }
+  ],
+  "P19": [
+    { "day": 2, "period": 9 }
+  ],
+  "P20": [
+    { "day": 2, "period": 10 }
+  ],
+  "P21": [
+    { "day": 3, "period": 1 }
+  ],
+  "P22": [
+    { "day": 3, "period": 2 }
+  ],
+  "P23": [
+    { "day": 3, "period": 3 }
+  ],
+  "P24": [
+    { "day": 3, "period": 4 }
+  ],
+  "P25": [
+    { "day": 3, "period": 5 }
+  ],
+  "P36": [
+    { "day": 4, "period": 6 }
+  ],
+  "P37": [
+    { "day": 4, "period": 7 }
+  ],
+  "P38": [
+    { "day": 4, "period": 8 }
+  ],
+  "P39": [
+    { "day": 4, "period": 9 }
+  ],
+  "P40": [
+    { "day": 4, "period": 10 }
+  ],
+  "P41": [
+    { "day": 5, "period": 1 }
+  ],
+  "P42": [
+    { "day": 5, "period": 2 }
+  ],
+  "P43": [
+    { "day": 5, "period": 3 }
+  ],
+  "P44": [
+    { "day": 5, "period": 4 }
+  ],
+  "P45": [
+    { "day": 5, "period": 5 }
+  ],
+  "A": [
+    { "day": 1, "period": 6 },
+    { "day": 1, "period": 7 },
+    { "day": 2, "period": 5 },
+    { "day": 3, "period": 8 }
+  ],
+  "B": [
+    { "day": 2, "period": 1 },
+    { "day": 2, "period": 2 },
+    { "day": 3, "period": 10 },
+    { "day": 4, "period": 3 }
+  ],
+  "C": [
+    { "day": 3, "period": 6 },
+    { "day": 3, "period": 7 },
+    { "day": 4, "period": 5 },
+    { "day": 5, "period": 8 }
+  ],
+  "D": [
+    { "day": 3, "period": 9 },
+    { "day": 4, "period": 1 },
+    { "day": 4, "period": 2 },
+    { "day": 5, "period": 10 }
+  ],
+  "E": [
+    { "day": 4, "period": 4 },
+    { "day": 5, "period": 6 },
+    { "day": 5, "period": 7 }
+  ],
+  "F": [
+    { "day": 1, "period": 8 },
+    { "day": 1, "period": 9 },
+    { "day": 5, "period": 9 }
+  ],
+  "G": [
+    { "day": 1, "period": 10 },
+    { "day": 2, "period": 3 },
+    { "day": 2, "period": 4 }
+  ],
+  "L11": [
+    { "day": 1, "period": 11 }
+  ],
+  "L12": [
+    { "day": 1, "period": 12 }
+  ],
+  "L21": [
+    { "day": 2, "period": 11 }
+  ],
+  "L22": [
+    { "day": 2, "period": 12 }
+  ],
+  "L31": [
+    { "day": 3, "period": 11 }
+  ],
+  "L32": [
+    { "day": 3, "period": 12 }
+  ],
+  "L41": [
+    { "day": 4, "period": 11 }
+  ],
+  "L42": [
+    { "day": 4, "period": 12 }
+  ],
+  "L51": [
+    { "day": 5, "period": 11 }
+  ],
+  "L52": [
+    { "day": 5, "period": 12 }
+  ]
+}
+

@@ -1,0 +1,32 @@
+{
+  "name": "GradeX - BITM",
+  "short_name": "GradeX",
+  "description": "Academic Tracker for BIT Mesra, Lalpur Campus",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#000000",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/arc-reactor.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/arc-reactor1.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/arc-reactor1.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["education", "productivity"],
+  "lang": "en",
+  "scope": "/"
+}

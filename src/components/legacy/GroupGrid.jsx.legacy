@@ -1,0 +1,1760 @@
+import React, { useMemo, useState, useEffect } from 'react';
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from 'recharts';
+
+const PIE_COLORS = [
+  '#38bdf8',
+  '#22c55e',
+  '#f59e0b',
+  '#a855f7',
+  '#f97316',
+  '#ef4444',
+  '#818cf8',
+  '#06b6d4',
+];
+
+const defaultAggregates = {
+  slotD: {},
+  slotA: {},
+  openG: {},
+  sections: {},
+};
+
+const defaultSuggestions = {
+  slotD: [],
+  slotA: [],
+  openG: [],
+  sections: [],
+};
+
+// Static elective options (AY 2025-26 Even)
+const electivesA = [
+  { code: '21CSE213T', title: 'Sustainable Computing' },
+  { code: '21CSE215J', title: 'Site Reliability Engineering' },
+  { code: '21CSE252T', title: 'Biometrics' },
+  { code: '21CSE307J', title: 'Quantum Machine Learning' },
+  { code: '21CSE325P', title: 'Quantum Communication & Cryptography' },
+  { code: '21CSE355T', title: 'Data Mining and Analytics' },
+  { code: '21CSE358T', title: 'Network Security and Cryptography' },
+  { code: '21CSE362T', title: 'Cloud Computing' },
+  { code: '21CSE733P', title: 'AgentOps Industrial Scale AI Deployment' },
+  { code: '21IPE333P', title: 'Essentials in Cloud and DevOps' },
+];
+
+const electivesD = [
+  { code: '211PE340J', title: 'Open Source Automation using Ansible' },
+  { code: '21CSE305T', title: 'Cloud Infrastructure Foundations' },
+  { code: '21CSE308J', title: 'Offensive Security' },
+  { code: '21CSE352T', title: 'Neuro Fuzzy and Genetic Programming' },
+  { code: '21CSE353T', title: 'Augmented, Virtual and Mixed Reality' },
+  { code: '21CSE356T', title: 'Natural Language Processing' },
+  { code: '21CSE360T', title: 'High Performance Computing' },
+  { code: '21CSE399T', title: 'Advanced Mobile Communications' },
+  { code: '21CSE402P', title: 'Intelligent Systems for IoT Applications' },
+  { code: '21IPE313T', title: 'Network Management Systems' },
+  { code: '21IPE315P', title: 'Cloud Product and Platform Engineering' },
+];
+
+// Slot E electives (Professional Elective)
+const electivesE = [
+  { code: '21IPE311T', title: '5G Technology - I' },
+];
+
+const electivesG = [
+  { code: '21IPE401JE', title: 'Capstone Program in Electronic Cooling' },
+  { code: '21ASO301T', title: 'Elements of Aeronautics' },
+  { code: '21AUO101T', title: 'Hybrid and Electric Vehicles' },
+  { code: '21AUO102T', title: 'Renewable Sources of Energy' },
+  { code: '21AUO109T', title: 'New Product Development' },
+  { code: '21BMO123T', title: 'Basics of Medical Imaging' },
+  { code: '21BTO105T', title: 'Animal Models for Biomedical Research' },
+  { code: '21BTO106T', title: 'Waste to Wealth to Wheels' },
+  { code: '21CEO303T', title: 'Smart City and Infrastructure' },
+  { code: '21CEO306T', title: 'Environmental Impact Assessment' },
+  { code: '21CEO307T', title: 'Municipal Solid Waste Management' },
+  { code: '21CEO308T', title: 'Disaster Mitigation and Management' },
+  { code: '21CEO309T', title: 'Water Pollution and its Management' },
+  { code: '21CEO310T', title: 'Global Warming and Climate Change' },
+  { code: '21CEO322T', title: 'Remote sensing and GIS applications in Engineering' },
+  { code: '21CEO403T', title: 'Integrated Waste Management' },
+  { code: '21CEO404T', title: 'Principles of Sustainable Development' },
+  { code: '21ECO101T', title: 'Short-Range Wireless Communication' },
+  { code: '21ECO103T', title: 'Modern Wireless Communication Systems' },
+  { code: '21ECO105T', title: 'Fiber Optics and Optoelectronics' },
+  { code: '21ECO110T', title: 'Semiconductor Packaging Technologies' },
+  { code: '21EEO307T', title: 'Clean and Green Energy' },
+  { code: '21MEO101T', title: 'Fundamentals of Composite Materials' },
+  { code: '21MEO103T', title: 'Fundamentals of Biomechanics' },
+  { code: '21MEO104T', title: 'TQM and Reliability Engineering' },
+  { code: '21MEO105T', title: 'Occupational Safety and Disaster Management' },
+  { code: '21MEO106T', title: 'Introduction to Robotics' },
+  { code: '21MEO110T', title: 'Energy Systems for Sustainable Buildings' },
+  { code: '21MEO112T', title: 'Renewable Energy Sources and Application' },
+  { code: '21MGO101T', title: 'EMOTIONAL INTELLIGENCE' },
+  { code: '21MGO107T', title: 'FLEXIBLE WORK MODELS AND EMPLOYEE WELL BEING' },
+  { code: '21MGO108T', title: 'CONSUMER BEHAVIOUR' },
+  { code: '21MGO111T', title: 'ENTREPRENEURIAL FINANCE' },
+  { code: '21MGO112T', title: 'PROJECT MANAGEMENT' },
+  { code: '21NTO301T', title: 'Applications of Nanotechnology' },
+  { code: '21NTO304T', title: 'Environmental Nanotechnology' },
+  { code: '21NTO307T', title: 'Nanocomputing' },
+  { code: '21NTO308T', title: 'Smart Sensor Systems' },
+  { code: '21NTO309T', title: '2D Materials and Applications' },
+];
+
+const professionalOptions = [...electivesA, ...electivesD, ...electivesE];
+
+function toPieData(counts) {
+  const allData = Object.entries(counts || {})
+    .map(([name, value]) => ({
+      name,
+      value,
+    }))
+    .filter((item) => item.value > 0)
+    .sort((a, b) => {
+      // Primary sort: descending by value
+      if (b.value !== a.value) {
+        return b.value - a.value;
+      }
+      // Secondary sort: ascending by name (alphabetical) when values are equal
+      return a.name.localeCompare(b.name);
+    });
+
+  if (allData.length <= 3) {
+    return allData; // Return all if 3 or fewer items
+  }
+
+  // Take top 3
+  const top3 = allData.slice(0, 3);
+  
+  // Sum the rest as "Others"
+  const othersSum = allData.slice(3).reduce((sum, item) => sum + item.value, 0);
+  
+  if (othersSum > 0) {
+    return [...top3, { name: 'Others', value: othersSum }];
+  }
+  
+  return top3;
+}
+
+function normalizeRA(value) {
+  return (value || '').toString().trim().toUpperCase();
+}
+
+// Convert name to proper case (title case)
+function toProperCase(name) {
+  if (!name || name === '-' || name === 'N/A') return name;
+  return name
+    .toLowerCase()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+function InfoBadge({ label, value, loading }) {
+  return (
+    <div className="groupgrid-badge">
+      <span>{label}</span>
+      {loading ? (
+        <strong style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: '20px' }}>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            style={{
+              animation: 'spin 1s linear infinite',
+              display: 'block',
+            }}
+          >
+            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+          </svg>
+        </strong>
+      ) : (
+        <strong>{value || '—'}</strong>
+      )}
+    </div>
+  );
+}
+
+export default function GroupGrid() {
+  const RA_PREFIX = 'RA';
+  const LOCAL_GROUPGRID_CACHE_KEY = 'gradex_groupgrid_cache_v1';
+  const LOCAL_GROUPGRID_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+  const MAX_LOCAL_GROUPGRID_CACHE_ENTRIES = 20;
+  const LOCAL_GROUPGRID_AGGREGATES_KEY = 'gradex_groupgrid_aggregates_v1';
+  const LOCAL_GROUPGRID_AGGREGATES_TTL = 10 * 60 * 1000; // 10 minutes for aggregates (more frequently updated)
+  
+  const [step, setStep] = useState('lookup'); // lookup | form | result
+  const [lookupRa, setLookupRa] = useState(RA_PREFIX);
+  const [entry, setEntry] = useState(null);
+  const [studentName, setStudentName] = useState(null);
+  const [aggregates, setAggregates] = useState(defaultAggregates);
+  const [entries, setEntries] = useState([]);
+  const [suggestions, setSuggestions] = useState(defaultSuggestions);
+  const [loading, setLoading] = useState(false);
+  const [badgesLoading, setBadgesLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [formError, setFormError] = useState('');
+  const [toast, setToast] = useState('');
+  const [filters, setFilters] = useState({ section: 'all', search: '' });
+  const [editingRow, setEditingRow] = useState(null);
+  const [editData, setEditData] = useState({});
+  const [isEditingOwnEntry, setIsEditingOwnEntry] = useState(false);
+
+  const [formData, setFormData] = useState({
+    section: '',
+    raNumber: '',
+    slotD: '',
+    slotA: '',
+    openG: '',
+  });
+  const [searchTerms, setSearchTerms] = useState({
+    slotD: '',
+    slotA: '',
+    openG: '',
+  });
+  const [dropdownOpen, setDropdownOpen] = useState({
+    slotD: false,
+    slotA: false,
+    openG: false,
+  });
+
+  // Cache helper functions
+  const readGroupGridCacheBucket = () => {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return { entries: {} };
+    }
+    try {
+      const raw = window.localStorage.getItem(LOCAL_GROUPGRID_CACHE_KEY);
+      if (!raw) return { entries: {} };
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') {
+        return { entries: {} };
+      }
+      if (!parsed.entries || typeof parsed.entries !== 'object') {
+        parsed.entries = {};
+      }
+      return parsed;
+    } catch (err) {
+      console.warn('Failed to read GroupGrid cache from localStorage:', err);
+      return { entries: {} };
+    }
+  };
+
+  const persistGroupGridCacheBucket = (bucket) => {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return;
+    }
+    try {
+      window.localStorage.setItem(LOCAL_GROUPGRID_CACHE_KEY, JSON.stringify(bucket));
+    } catch (err) {
+      console.warn('Failed to write GroupGrid cache to localStorage:', err);
+    }
+  };
+
+  const buildGroupGridCacheKey = (registerNumber) => {
+    return (registerNumber || '').toUpperCase();
+  };
+
+  const getGroupGridCacheEntry = (registerNumber) => {
+    const cacheKey = buildGroupGridCacheKey(registerNumber);
+    const bucket = readGroupGridCacheBucket();
+    const entry = bucket.entries?.[cacheKey];
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp > LOCAL_GROUPGRID_CACHE_TTL) {
+      delete bucket.entries[cacheKey];
+      persistGroupGridCacheBucket(bucket);
+      return null;
+    }
+    return entry.data || null;
+  };
+
+  const setGroupGridCacheEntry = (registerNumber, data) => {
+    const cacheKey = buildGroupGridCacheKey(registerNumber);
+    const bucket = readGroupGridCacheBucket();
+    bucket.entries = bucket.entries || {};
+    bucket.entries[cacheKey] = {
+      timestamp: Date.now(),
+      data,
+    };
+    const keys = Object.keys(bucket.entries);
+    if (keys.length > MAX_LOCAL_GROUPGRID_CACHE_ENTRIES) {
+      const sorted = keys.sort(
+        (a, b) => (bucket.entries[a]?.timestamp || 0) - (bucket.entries[b]?.timestamp || 0)
+      );
+      while (sorted.length > MAX_LOCAL_GROUPGRID_CACHE_ENTRIES) {
+        const oldestKey = sorted.shift();
+        if (oldestKey) {
+          delete bucket.entries[oldestKey];
+        }
+      }
+    }
+    persistGroupGridCacheBucket(bucket);
+  };
+
+  const getAggregatesCache = () => {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return null;
+    }
+    try {
+      const raw = window.localStorage.getItem(LOCAL_GROUPGRID_AGGREGATES_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return null;
+      if (Date.now() - parsed.timestamp > LOCAL_GROUPGRID_AGGREGATES_TTL) {
+        window.localStorage.removeItem(LOCAL_GROUPGRID_AGGREGATES_KEY);
+        return null;
+      }
+      return parsed.data || null;
+    } catch (err) {
+      console.warn('Failed to read aggregates cache:', err);
+      return null;
+    }
+  };
+
+  const setAggregatesCache = (data) => {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return;
+    }
+    try {
+      window.localStorage.setItem(LOCAL_GROUPGRID_AGGREGATES_KEY, JSON.stringify({
+        timestamp: Date.now(),
+        data,
+      }));
+    } catch (err) {
+      console.warn('Failed to write aggregates cache:', err);
+    }
+  };
+
+  const sectionOptions = useMemo(() => {
+    const set = new Set();
+    (suggestions.sections || []).forEach((sec) => set.add(sec));
+    (entries || []).forEach((item) => {
+      if (item.section) set.add(item.section);
+    });
+    return ['all', ...Array.from(set)];
+  }, [entries, suggestions.sections]);
+
+  // Compute unique sections count for badge
+  const uniqueSectionsCount = useMemo(() => {
+    const sectionsSet = new Set();
+    (entries || []).forEach((item) => {
+      if (item.section) sectionsSet.add(item.section);
+    });
+    return sectionsSet.size;
+  }, [entries]);
+
+  const filteredEntries = useMemo(() => {
+    const searchTerm = filters.search.trim().toLowerCase();
+    return (entries || []).filter((item) => {
+      const matchesSection =
+        filters.section === 'all' || item.section === filters.section;
+      const matchesSearch =
+        searchTerm.length === 0 ||
+        [
+          item.slotD,
+          item.slotA,
+          item.openG,
+        ]
+          .filter(Boolean)
+          .some((val) => val.toLowerCase().includes(searchTerm));
+      return matchesSection && matchesSearch;
+    });
+  }, [entries, filters]);
+
+  const slotDPie = useMemo(() => toPieData(aggregates.slotD), [aggregates.slotD]);
+  const slotAPie = useMemo(() => toPieData(aggregates.slotA), [aggregates.slotA]);
+  const openGPie = useMemo(() => toPieData(aggregates.openG), [aggregates.openG]);
+
+  const hasPoolAccess = Boolean(entry);
+
+  // Fetch initial aggregates on mount to populate badges
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      // Check cache first
+      const cachedAggregates = getAggregatesCache();
+      if (cachedAggregates) {
+        setAggregates(cachedAggregates.aggregates || defaultAggregates);
+        setEntries(cachedAggregates.entries || []);
+        setSuggestions(cachedAggregates.suggestions || defaultSuggestions);
+        setBadgesLoading(false);
+        // Still fetch in background to update cache
+      } else {
+        setBadgesLoading(true);
+      }
+
+      try {
+        const res = await fetch('/api/groupgrid');
+        const json = await res.json();
+        if (res.ok && json.status === 'ok') {
+          const data = {
+            aggregates: json.aggregates || defaultAggregates,
+            entries: json.entries || [],
+            suggestions: json.suggestions || defaultSuggestions,
+          };
+          setAggregates(data.aggregates);
+          setEntries(data.entries);
+          setSuggestions(data.suggestions);
+          // Cache the aggregates data
+          setAggregatesCache(data);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch initial GroupGrid data:', err);
+      } finally {
+        setBadgesLoading(false);
+      }
+    };
+    fetchInitialData();
+  }, []); // Fetch on mount
+
+  // Track GroupGrid page visits
+  useEffect(() => {
+    const trackGroupGridVisit = async () => {
+      try {
+        await fetch('/api/admin?action=track-groupgrid', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            registerNumber: lookupRa !== RA_PREFIX ? lookupRa : null,
+            timestamp: new Date().toISOString(),
+          }),
+        });
+      } catch (err) {
+        console.warn('Failed to track GroupGrid visit:', err);
+      }
+    };
+    trackGroupGridVisit();
+  }, []); // Track on mount
+
+  const handleEdit = (row) => {
+    // Only allow editing if it's the user's own entry
+    if (!entry || entry.registerNumber !== row.registerNumber) {
+      return;
+    }
+    setEditingRow(row.registerNumber);
+    setEditData({
+      section: row.section || '',
+      slotD: row.slotD || '',
+      slotA: row.slotA || '',
+      openG: row.openG || '',
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingRow(null);
+    setEditData({});
+  };
+
+  const handleSaveEdit = async (registerNumber) => {
+    // Only allow saving if it's the user's own entry
+    if (!entry || entry.registerNumber !== registerNumber) {
+      setError('You can only edit your own subjects');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await fetch('/api/groupgrid', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          registerNumber,
+          section: editData.section,
+          slotD: editData.slotD,
+          slotA: editData.slotA,
+          openG: editData.openG,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || 'Failed to update entry');
+      }
+      setEditingRow(null);
+      setEditData({});
+      setToast('Entry updated successfully');
+      setTimeout(() => setToast(''), 2500);
+      // Invalidate cache for this user and aggregates
+      const cacheKey = buildGroupGridCacheKey(registerNumber);
+      const bucket = readGroupGridCacheBucket();
+      delete bucket.entries[cacheKey];
+      persistGroupGridCacheBucket(bucket);
+      window.localStorage.removeItem(LOCAL_GROUPGRID_AGGREGATES_KEY);
+      await refreshData();
+    } catch (err) {
+      setError(err.message || 'Failed to update entry');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEditOwnEntry = () => {
+    if (!entry) return;
+    setIsEditingOwnEntry(true);
+    setFormData({
+      section: entry.section || '',
+      raNumber: entry.registerNumber || '',
+      slotD: entry.slotD || '',
+      slotA: entry.slotA || '',
+      openG: entry.openG || '',
+    });
+    setStep('form');
+  };
+
+  const handleCancelEditOwnEntry = () => {
+    setIsEditingOwnEntry(false);
+    setStep('result');
+  };
+
+  const handleSaveOwnEntry = async (e) => {
+    e.preventDefault();
+    setFormError('');
+    setToast('');
+
+    const payload = {
+      registerNumber: normalizeRA(formData.raNumber || lookupRa),
+      section: formData.section.trim().toUpperCase(),
+      slotD: formData.slotD,
+      slotA: formData.slotA,
+      openG: formData.openG,
+    };
+
+    if (!payload.registerNumber || !payload.section) {
+      setFormError('Register number and section are required.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/groupgrid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || 'Failed to update subjects');
+      }
+      setIsEditingOwnEntry(false);
+      setToast('Subjects updated successfully');
+      setTimeout(() => setToast(''), 2500);
+      // Invalidate cache for this user and aggregates
+      const cacheKey = buildGroupGridCacheKey(payload.registerNumber);
+      const bucket = readGroupGridCacheBucket();
+      delete bucket.entries[cacheKey];
+      persistGroupGridCacheBucket(bucket);
+      window.localStorage.removeItem(LOCAL_GROUPGRID_AGGREGATES_KEY);
+      await refreshData(payload.registerNumber);
+      setStep('result');
+    } catch (err) {
+      setFormError(err.message || 'Failed to update subjects');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleLookup = async () => {
+    const normalized = normalizeRA(lookupRa);
+    setError('');
+    setToast('');
+
+    const maxLength = RA_PREFIX.length + 13; // RA + 13 digits
+    const digitsOnly = normalized.slice(RA_PREFIX.length);
+
+    if (!normalized || !normalized.startsWith(RA_PREFIX)) {
+      setError('Register number must start with RA.');
+      return;
+    }
+
+    if (!/^\d+$/.test(digitsOnly)) {
+      setError('Register number must contain only digits after RA.');
+      return;
+    }
+
+    if (normalized.length !== maxLength) {
+      setError('Register number is incomplete. Please enter the full RA number (e.g., RA2311003012246).');
+      return;
+    }
+
+    // Check if this is a different user - reset all state if so
+    const isNewUser = !entry || entry.registerNumber !== normalized;
+    if (isNewUser) {
+      // Reset all editing and form state for new user
+      setEditingRow(null);
+      setEditData({});
+      setIsEditingOwnEntry(false);
+      setFormError('');
+      setFormData({
+        section: '',
+        raNumber: '',
+        slotD: '',
+        slotA: '',
+        openG: '',
+      });
+      setSearchTerms({
+        slotD: '',
+        slotA: '',
+        openG: '',
+      });
+      setDropdownOpen({
+        slotD: false,
+        slotA: false,
+        openG: false,
+      });
+    }
+
+    // Check cache first
+    const cachedData = getGroupGridCacheEntry(normalized);
+    if (cachedData) {
+      setAggregates(cachedData.aggregates || defaultAggregates);
+      setEntries(cachedData.entries || []);
+      setSuggestions(cachedData.suggestions || defaultSuggestions);
+      
+      if (cachedData.studentName) {
+        setStudentName(cachedData.studentName);
+      } else {
+        setStudentName(null);
+      }
+
+      if (cachedData.entry) {
+        setEntry(cachedData.entry);
+        setFormData((prev) => ({
+          ...prev,
+          raNumber: cachedData.entry.registerNumber || normalized,
+          section: cachedData.entry.section || '',
+          slotD: cachedData.entry.slotD || '',
+          slotA: cachedData.entry.slotA || '',
+          openG: cachedData.entry.openG || '',
+        }));
+        setStep('result');
+      } else {
+        setEntry(null);
+        setFormData((prev) => ({
+          ...prev,
+          raNumber: normalized,
+        }));
+        setStep('form');
+      }
+      setLoading(false);
+      // Still fetch in background to update cache
+    } else {
+      setLoading(true);
+    }
+
+    try {
+      const res = await fetch(`/api/groupgrid?ra=${encodeURIComponent(normalized)}`);
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json.error || 'Unable to reach GroupGrid');
+      }
+
+      const data = {
+        aggregates: json.aggregates || defaultAggregates,
+        entries: json.entries || [],
+        suggestions: json.suggestions || defaultSuggestions,
+        entry: json.entry || null,
+        studentName: json.studentName || null,
+      };
+
+      setAggregates(data.aggregates);
+      setEntries(data.entries);
+      setSuggestions(data.suggestions);
+
+      // Store student name from students table
+      if (data.studentName) {
+        setStudentName(data.studentName);
+      } else {
+        setStudentName(null);
+      }
+
+      // Cache the data
+      setGroupGridCacheEntry(normalized, data);
+
+      if (data.entry) {
+        setEntry(data.entry);
+        setFormData((prev) => ({
+          ...prev,
+          raNumber: data.entry.registerNumber || normalized,
+          section: data.entry.section || '',
+          slotD: data.entry.slotD || '',
+          slotA: data.entry.slotA || '',
+          openG: data.entry.openG || '',
+        }));
+        setStep('result');
+      } else {
+        setEntry(null);
+        setFormData((prev) => ({
+          ...prev,
+          raNumber: normalized,
+        }));
+        setStep('form');
+      }
+    } catch (err) {
+      setError(err.message || 'Something went wrong while checking Supabase');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshData = async (registerNumber) => {
+    const ra = normalizeRA(registerNumber || lookupRa || entry?.registerNumber);
+    if (!ra) return;
+    try {
+      const res = await fetch(`/api/groupgrid?ra=${encodeURIComponent(ra)}`);
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || 'Failed to refresh pool');
+      }
+      
+      const data = {
+        aggregates: json.aggregates || defaultAggregates,
+        entries: json.entries || [],
+        suggestions: json.suggestions || defaultSuggestions,
+        entry: json.entry || null,
+        studentName: json.studentName || null,
+      };
+
+      setAggregates(data.aggregates);
+      setEntries(data.entries);
+      setSuggestions(data.suggestions);
+      
+      // Update cache
+      setGroupGridCacheEntry(ra, data);
+      setAggregatesCache({
+        aggregates: data.aggregates,
+        entries: data.entries,
+        suggestions: data.suggestions,
+      });
+      
+      if (data.entry) {
+        setEntry(data.entry);
+      }
+      if (data.studentName) {
+        setStudentName(data.studentName);
+      }
+      setToast('Pool refreshed from Supabase.');
+      setTimeout(() => setToast(''), 2500);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setFormError('');
+    setToast('');
+
+    const payload = {
+      registerNumber: normalizeRA(formData.raNumber || lookupRa),
+      section: formData.section.trim().toUpperCase(),
+      slotD: formData.slotD,
+      slotA: formData.slotA,
+      openG: formData.openG,
+    };
+
+    if (!payload.registerNumber || !payload.section) {
+      setFormError('Register number and section are required.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/groupgrid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || 'Unable to save entry');
+      }
+
+      setEntry(json.entry || null);
+      setToast('Saved. Redirecting to pool results...');
+      setStep('result');
+      // Invalidate cache for this user and aggregates
+      const cacheKey = buildGroupGridCacheKey(payload.registerNumber);
+      const bucket = readGroupGridCacheBucket();
+      delete bucket.entries[cacheKey];
+      persistGroupGridCacheBucket(bucket);
+      window.localStorage.removeItem(LOCAL_GROUPGRID_AGGREGATES_KEY);
+      await refreshData(payload.registerNumber);
+    } catch (err) {
+      setFormError(err.message || 'Failed to submit entry');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const renderPieCard = (title, data) => (
+    <div className="groupgrid-card groupgrid-pie-card">
+      <div className="groupgrid-card-header">
+        <h4>{title}</h4>
+      </div>
+      {data.length === 0 ? (
+        <p className="groupgrid-empty">No data yet</p>
+      ) : (
+        <div style={{ 
+          width: '100%', 
+          padding: 'clamp(16px, 4vw, 24px)',
+          background: 'rgba(255, 255, 255, 0.02)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '8px',
+          marginTop: 'clamp(12px, 3vw, 16px)',
+        }}>
+          <div style={{ width: '100%', height: 360, minHeight: 360 }}>
+            <ResponsiveContainer>
+              <PieChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+                <Pie
+                  data={data}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={55}
+                  outerRadius={85}
+                  paddingAngle={2}
+                  cx="50%"
+                  cy="45%"
+                >
+                  {data.map((_, idx) => (
+                    <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    background: 'var(--card-bg)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '8px',
+                  }}
+                />
+                <Legend
+                  verticalAlign="bottom"
+                  align="left"
+                  height={120}
+                  iconType="circle"
+                  wrapperStyle={{
+                    paddingTop: '20px',
+                    fontSize: '11px',
+                    lineHeight: '1.6',
+                  }}
+                  content={(props) => {
+                    // Use the data array directly to maintain the correct order
+                    // The data is already sorted by toPieData function
+                    return (
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                        alignItems: 'flex-start',
+                      }}>
+                        {data.map((item, index) => {
+                          const entryName = item.name || '';
+                          const entryValue = item.value || 0;
+                          const color = PIE_COLORS[index % PIE_COLORS.length];
+                          return (
+                            <div key={index} style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                            }}>
+                              <div style={{
+                                width: '12px',
+                                height: '12px',
+                                borderRadius: '50%',
+                                backgroundColor: color,
+                                flexShrink: 0,
+                              }} />
+                              <span style={{
+                                fontSize: '11px',
+                                color: 'var(--text-primary)',
+                                wordBreak: 'break-word',
+                                overflowWrap: 'break-word',
+                              }}>
+                                {entryName.length > 30
+                                  ? entryName.substring(0, 30) + '...'
+                                  : entryName} ({entryValue})
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderSearchableDropdown = (fieldName, options, label) => {
+    const searchTerm = searchTerms[fieldName] || '';
+    const isOpen = dropdownOpen[fieldName] || false;
+    const currentValue = formData[fieldName] || '';
+    
+    // Add "Industrial Subject" option to all dropdowns
+    const allOptions = [
+      { code: 'INDUSTRIAL', title: 'Industrial Subject', isIndustrial: true },
+      ...options
+    ];
+    
+    const filteredOptions = allOptions.filter((opt) => {
+      if (!searchTerm) return true; // Show all when no search term
+      const searchLower = searchTerm.toLowerCase();
+      if (opt.isIndustrial) {
+        return 'industrial subject'.includes(searchLower) || searchLower.includes('industrial');
+      }
+      const codeMatch = opt.code.toLowerCase().includes(searchLower);
+      const titleMatch = opt.title.toLowerCase().includes(searchLower);
+      const fullText = `${opt.code} — ${opt.title}`.toLowerCase();
+      return codeMatch || titleMatch || fullText.includes(searchLower);
+    });
+
+    // Show search term when typing, otherwise show selected value
+    const displayValue = isOpen && searchTerm ? searchTerm : currentValue;
+
+    return (
+      <div style={{ position: 'relative', width: '100%' }}>
+        <input
+          type="text"
+          className="groupgrid-input"
+          value={displayValue}
+          onChange={(e) => {
+            const value = e.target.value;
+            setSearchTerms((prev) => ({ ...prev, [fieldName]: value }));
+            setDropdownOpen((prev) => ({ ...prev, [fieldName]: true }));
+            // Clear selection when user starts typing a new value
+            if (value && value !== currentValue) {
+              setFormData((prev) => ({ ...prev, [fieldName]: '' }));
+            }
+          }}
+          onFocus={(e) => {
+            setDropdownOpen((prev) => ({ ...prev, [fieldName]: true }));
+            // When focusing, if there's a selected value, clear it to start fresh search
+            if (currentValue) {
+              setSearchTerms((prev) => ({ ...prev, [fieldName]: '' }));
+              e.target.select(); // Select all text for easy replacement
+            }
+          }}
+          onBlur={() => {
+            setTimeout(() => {
+              setDropdownOpen((prev) => ({ ...prev, [fieldName]: false }));
+              setSearchTerms((prev) => ({ ...prev, [fieldName]: '' }));
+            }, 200);
+          }}
+          placeholder={currentValue ? '' : `Search ${label.toLowerCase()}...`}
+          style={{
+            width: '100%',
+            padding: 'clamp(12px, 3vw, 14px) clamp(14px, 3.5vw, 16px)',
+            fontSize: 'clamp(14px, 3.5vw, 16px)',
+          }}
+        />
+        {isOpen && filteredOptions.length > 0 && (
+          <div
+            style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              zIndex: 1000,
+              background: 'var(--card-bg)',
+              backgroundColor: 'var(--card-bg)',
+              opacity: 1,
+              border: '1px solid var(--border-color)',
+              borderRadius: '8px',
+              marginTop: '6px',
+              maxHeight: '240px',
+              overflowY: 'auto',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
+            }}
+          >
+            {filteredOptions.map((opt, idx) => {
+              // For Industrial Subject, use just the title; otherwise use code — title format
+              const optionValue = opt.isIndustrial ? opt.title : `${opt.code} — ${opt.title}`;
+              const isSelected = currentValue === optionValue;
+              return (
+                <div
+                  key={opt.code || 'industrial'}
+                  onMouseDown={(e) => {
+                    e.preventDefault(); // Prevent blur before click
+                    setFormData((prev) => ({ ...prev, [fieldName]: optionValue }));
+                    setSearchTerms((prev) => ({ ...prev, [fieldName]: '' }));
+                    setDropdownOpen((prev) => ({ ...prev, [fieldName]: false }));
+                  }}
+                  style={{
+                    padding: '12px 16px',
+                    cursor: 'pointer',
+                    borderBottom: idx < filteredOptions.length - 1 ? '1px solid var(--border-color)' : 'none',
+                    color: 'var(--text-primary)',
+                    fontSize: '14px',
+                    background: isSelected ? 'var(--bg-secondary)' : 'var(--card-bg)',
+                    backgroundColor: isSelected ? 'var(--bg-secondary)' : 'var(--card-bg)',
+                    opacity: 1,
+                    transition: 'background-color 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--bg-secondary)';
+                    e.currentTarget.style.backgroundColor = 'var(--bg-secondary)';
+                    e.currentTarget.style.opacity = '1';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (isSelected) {
+                      e.currentTarget.style.background = 'var(--bg-secondary)';
+                      e.currentTarget.style.backgroundColor = 'var(--bg-secondary)';
+                    } else {
+                      e.currentTarget.style.background = 'var(--card-bg)';
+                      e.currentTarget.style.backgroundColor = 'var(--card-bg)';
+                    }
+                    e.currentTarget.style.opacity = '1';
+                  }}
+                >
+                {opt.isIndustrial ? (
+                  <div style={{ 
+                    fontWeight: 600, 
+                    fontSize: '15px',
+                    color: 'var(--text-primary)',
+                    opacity: 1,
+                  }}>
+                    {opt.title}
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ 
+                      fontWeight: 600, 
+                      fontSize: '15px',
+                      marginBottom: '4px',
+                      color: 'var(--text-primary)',
+                      opacity: 1,
+                    }}>
+                      {opt.code}
+                    </div>
+                    <div style={{ 
+                      fontSize: '13px', 
+                      color: 'var(--text-secondary)', 
+                      lineHeight: '1.4',
+                      opacity: 1,
+                    }}>
+                      {opt.title}
+                    </div>
+                  </>
+                )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {isOpen && filteredOptions.length === 0 && searchTerm && (
+          <div
+            style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              zIndex: 1000,
+              background: 'var(--card-bg)',
+              backgroundColor: 'var(--card-bg)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '8px',
+              marginTop: '6px',
+              padding: '16px',
+              textAlign: 'center',
+              color: 'var(--text-secondary)',
+              fontSize: '14px',
+              opacity: 1,
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
+            }}
+          >
+            No results found
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="groupgrid-shell">
+      <div className="groupgrid-hero">
+        <div>
+          <h2>GroupGrid</h2>
+          <h3 className="groupgrid-hero-subtitle">Find Your Mates with Common Elective Subjects</h3>
+        </div>
+        <div className="groupgrid-status">
+          <InfoBadge 
+            label="Pool entries" 
+            value={entries.length.toLocaleString()}
+            loading={badgesLoading}
+          />
+          <InfoBadge 
+            label="Sections" 
+            value={uniqueSectionsCount.toLocaleString()}
+            loading={badgesLoading}
+          />
+          <InfoBadge
+            label="Access"
+            value={hasPoolAccess ? 'Allowed' : 'Pending'}
+          />
+        </div>
+        <div style={{
+          marginTop: 'clamp(16px, 4vw, 20px)',
+          textAlign: 'center',
+          fontSize: 'clamp(12px, 3vw, 13px)',
+          color: 'var(--text-secondary)',
+          fontStyle: 'italic',
+          letterSpacing: '0.02em',
+        }}>
+          More Data. Sharper Results.
+        </div>
+      </div>
+
+      <div className="groupgrid-grid two">
+        <div className="groupgrid-card">
+          {/* Header box - match SeatFinder style */}
+          <div
+            style={{
+              marginBottom: 'clamp(20px, 5vw, 24px)',
+              textAlign: 'center',
+            }}
+          >
+            <h2
+              style={{
+                fontSize: 'clamp(20px, 5vw, 24px)',
+                fontWeight: 600,
+                margin: '0 0 8px 0',
+                color: 'var(--text-primary)',
+              }}
+            >
+              Enter Your RA to Proceed
+            </h2>
+            <p
+              style={{
+                fontSize: 'clamp(13px, 3.5vw, 14px)',
+                color: 'var(--text-secondary)',
+                margin: 0,
+              }}
+            >
+              Enter your register number. If your slots are already stored in Supabase, we’ll take you
+              straight to the pool. Otherwise, add them once and it will be instant next time.
+            </p>
+          </div>
+          {step !== 'result' && null}
+
+          {/* Register Number - SeatFinder-style with fixed RA prefix */}
+          <div
+            style={{
+              marginTop: 'clamp(16px, 4vw, 20px)',
+              marginBottom: 'clamp(20px, 5vw, 24px)',
+            }}
+          >
+            <label
+              style={{
+                display: 'block',
+                fontSize: 'clamp(13px, 3.5vw, 14px)',
+                fontWeight: 500,
+                color: 'var(--text-primary)',
+                marginBottom: 'clamp(10px, 2.5vw, 12px)',
+              }}
+            >
+              Register Number
+            </label>
+            <div
+              style={{
+                width: '100%',
+                border:
+                  error && lookupRa.trim().length > RA_PREFIX.length
+                    ? '1px solid #ef4444'
+                    : '1px solid var(--border-color)',
+                borderRadius: '8px',
+                background: 'var(--card-bg)',
+              }}
+            >
+              <input
+                type="text"
+                value={lookupRa}
+                onChange={(e) => {
+                  const raw = e.target.value.toUpperCase();
+                  let next = raw.startsWith(RA_PREFIX) ? raw : `${RA_PREFIX}${raw.replace(/[^0-9]/g, '')}`;
+                  let digitsPortion = next.slice(RA_PREFIX.length).replace(/[^0-9]/g, '');
+                  digitsPortion = digitsPortion.slice(0, 13); // cap to 13 digits
+                  const full = `${RA_PREFIX}${digitsPortion}`;
+                  setLookupRa(full);
+                  // Clear student name when RA changes
+                  if (full !== lookupRa && studentName) {
+                    setStudentName(null);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  const input = e.currentTarget;
+                  const caret = input.selectionStart ?? 0;
+                  const isBackspace = e.key === 'Backspace' || e.key === 'Delete';
+                  if (isBackspace && caret <= RA_PREFIX.length) {
+                    e.preventDefault();
+                    requestAnimationFrame(() => {
+                      input.setSelectionRange(RA_PREFIX.length, RA_PREFIX.length);
+                    });
+                    return;
+                  }
+                  if (e.key === 'ArrowLeft' && caret <= RA_PREFIX.length) {
+                    e.preventDefault();
+                    input.setSelectionRange(RA_PREFIX.length, RA_PREFIX.length);
+                    return;
+                  }
+                  if (e.key === 'Enter') handleLookup();
+                }}
+                placeholder={`${RA_PREFIX}2311003012246`}
+                autoComplete="off"
+                spellCheck={false}
+                style={{
+                  width: '100%',
+                  padding: 'clamp(12px, 3vw, 14px) clamp(18px, 4vw, 20px)',
+                  fontSize: 'clamp(14px, 3.5vw, 16px)',
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--text-primary)',
+                  outline: 'none',
+                  letterSpacing: '0.08em',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Submit Button - SeatFinder style */}
+          <button
+            type="button"
+            onClick={handleLookup}
+            disabled={loading}
+            style={{
+              width: '100%',
+              padding: 'clamp(14px, 3.5vw, 16px)',
+              fontSize: 'clamp(15px, 4vw, 16px)',
+              fontWeight: 600,
+              border: 'none',
+              background: loading ? 'var(--border-color)' : 'var(--text-primary)',
+              color: loading ? 'var(--text-tertiary)' : 'var(--bg-primary)',
+              borderRadius: '8px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 'clamp(6px, 2vw, 8px)',
+              minHeight: '48px',
+              touchAction: 'manipulation',
+              WebkitTapHighlightColor: 'transparent',
+            }}
+            onMouseEnter={(e) => {
+              if (!loading) {
+                e.currentTarget.style.opacity = '0.9';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!loading) {
+                e.currentTarget.style.opacity = '1';
+              }
+            }}
+          >
+            {loading ? 'Checking...' : 'Proceed'}
+          </button>
+          {studentName && (
+            <div
+              style={{
+                marginTop: 'clamp(16px, 4vw, 20px)',
+                padding: 'clamp(12px, 3vw, 14px) clamp(14px, 3.5vw, 16px)',
+                background: 'rgba(56, 189, 248, 0.1)',
+                border: '1px solid rgba(56, 189, 248, 0.3)',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'clamp(8px, 2vw, 12px)',
+              }}
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ color: 'var(--text-primary)', flexShrink: 0 }}
+              >
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+              <p style={{ margin: 0, color: 'var(--text-primary)', fontSize: 'clamp(14px, 3.5vw, 16px)', fontWeight: 500 }}>
+                Welcome {toProperCase(studentName)}!
+              </p>
+            </div>
+          )}
+          {error && (
+            <div
+              style={{
+                marginTop: '12px',
+                padding: '10px 12px',
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px',
+              }}
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ color: '#ef4444', flexShrink: 0, marginTop: '2px' }}
+              >
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              <p style={{ margin: 0, color: '#ef4444', fontSize: '13px', lineHeight: 1.5 }}>
+                {error}
+              </p>
+            </div>
+          )}
+          {toast && <p className="groupgrid-toast">{toast}</p>}
+        </div>
+
+        {step === 'form' && (
+          <div className="groupgrid-card">
+            <div className="groupgrid-card-header">
+              <h4>{isEditingOwnEntry ? 'Edit your subjects' : 'Add your subjects'}</h4>
+              <span className="groupgrid-light-label">Stored in Supabase</span>
+            </div>
+            <form className="groupgrid-form" onSubmit={isEditingOwnEntry ? handleSaveOwnEntry : handleSubmit}>
+              <div style={{ padding: 'clamp(16px, 4vw, 24px) 0' }}>
+                <div className="groupgrid-form-grid" style={{ gap: 'clamp(16px, 4vw, 20px)' }}>
+                  <label className="groupgrid-field">
+                    <span>Register / RA Number *</span>
+                    <input
+                      className="groupgrid-input"
+                      value={formData.raNumber}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, raNumber: e.target.value }))
+                      }
+                      required
+                    />
+                  </label>
+                  <label className="groupgrid-field">
+                    <span>Section *</span>
+                    <input
+                      className="groupgrid-input"
+                      value={formData.section}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, section: e.target.value }))
+                      }
+                      placeholder="E.g., A1, B2"
+                      required
+                    />
+                  </label>
+                  <label className="groupgrid-field">
+                    <span>Professional Elective - Slot D</span>
+                    {renderSearchableDropdown('slotD', electivesD, 'Slot D')}
+                  </label>
+                  <label className="groupgrid-field">
+                    <span>Professional Elective - Slot A</span>
+                    {renderSearchableDropdown('slotA', electivesA, 'Slot A')}
+                  </label>
+                  <label className="groupgrid-field">
+                    <span>Open Elective - Slot G</span>
+                    {renderSearchableDropdown('openG', electivesG, 'Slot G')}
+                  </label>
+                </div>
+                <div className="groupgrid-form-actions">
+                  <button
+                    type="button"
+                    className="groupgrid-secondary"
+                    onClick={() => {
+                      if (isEditingOwnEntry) {
+                        handleCancelEditOwnEntry();
+                      } else {
+                        setStep('lookup');
+                      }
+                    }}
+                  >
+                    Back
+                  </button>
+                  <button type="submit" className="groupgrid-button" disabled={submitting}>
+                    {submitting ? 'Saving...' : isEditingOwnEntry ? 'Update Subjects' : 'Save & View Pool'}
+                  </button>
+                </div>
+                {formError && <p className="groupgrid-error">{formError}</p>}
+              </div>
+            </form>
+            <datalist id="slotd-options">
+              {(suggestions.slotD || []).map((option) => (
+                <option value={option} key={option} />
+              ))}
+            </datalist>
+            <datalist id="slota-options">
+              {(suggestions.slotA || []).map((option) => (
+                <option value={option} key={option} />
+              ))}
+            </datalist>
+            <datalist id="openg-options">
+              {(suggestions.openG || []).map((option) => (
+                <option value={option} key={option} />
+              ))}
+            </datalist>
+          </div>
+        )}
+      </div>
+
+      {step === 'result' && hasPoolAccess && (
+        <div className="groupgrid-stack">
+          <div className="groupgrid-card">
+            <div className="groupgrid-card-header">
+              <h4>Pool Results</h4>
+              <div className="groupgrid-actions">
+                <button
+                  type="button"
+                  className="groupgrid-secondary"
+                  onClick={handleEditOwnEntry}
+                  style={{ marginRight: '8px' }}
+                >
+                  Edit Subjects
+                </button>
+                <button
+                  type="button"
+                  className="groupgrid-secondary"
+                  onClick={() => refreshData()}
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
+            <div style={{ padding: 'clamp(16px, 4vw, 24px) 0' }}>
+              {entry ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(16px, 4vw, 20px)' }}>
+                  <div className="groupgrid-summary" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'clamp(12px, 3vw, 16px)' }}>
+                    <InfoBadge label="Register" value={entry.registerNumber} />
+                    <InfoBadge label="Section" value={entry.section} />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'clamp(12px, 3vw, 16px)' }}>
+                    <div style={{ fontSize: 'clamp(13px, 3.5vw, 14px)', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px', letterSpacing: '0.05em' }}>
+                      YOUR SUBJECTS
+                    </div>
+                    <div className="groupgrid-summary" style={{ gridTemplateColumns: '1fr', gap: 'clamp(10px, 2.5vw, 12px)' }}>
+                      {entry.slotD && (
+                        <div style={{ 
+                          padding: 'clamp(10px, 2.5vw, 12px) clamp(12px, 3vw, 16px)',
+                          background: 'rgba(255, 255, 255, 0.04)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '8px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4px'
+                        }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>
+                            Professional Elective - Slot D
+                          </span>
+                          <span style={{ fontSize: 'clamp(13px, 3.5vw, 14px)', color: 'var(--text-primary)', fontWeight: 500 }}>
+                            {entry.slotD}
+                          </span>
+                        </div>
+                      )}
+                      {entry.slotA && (
+                        <div style={{ 
+                          padding: 'clamp(10px, 2.5vw, 12px) clamp(12px, 3vw, 16px)',
+                          background: 'rgba(255, 255, 255, 0.04)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '8px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4px'
+                        }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>
+                            Professional Elective - Slot A
+                          </span>
+                          <span style={{ fontSize: 'clamp(13px, 3.5vw, 14px)', color: 'var(--text-primary)', fontWeight: 500 }}>
+                            {entry.slotA}
+                          </span>
+                        </div>
+                      )}
+                      {entry.openG && (
+                        <div style={{ 
+                          padding: 'clamp(10px, 2.5vw, 12px) clamp(12px, 3vw, 16px)',
+                          background: 'rgba(255, 255, 255, 0.04)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '8px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4px'
+                        }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>
+                            Open Elective - Slot G
+                          </span>
+                          <span style={{ fontSize: 'clamp(13px, 3.5vw, 14px)', color: 'var(--text-primary)', fontWeight: 500 }}>
+                            {entry.openG}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="groupgrid-empty">
+                  No record found in Supabase yet. Please submit the form first.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div style={{ marginTop: 'clamp(24px, 6vw, 32px)' }}>
+            <div style={{ fontSize: 'clamp(13px, 3.5vw, 14px)', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 'clamp(16px, 4vw, 20px)', letterSpacing: '0.05em' }}>
+              POOL BREAKDOWN
+            </div>
+            <div className="groupgrid-grid three" style={{ gap: 'clamp(16px, 4vw, 24px)' }}>
+              {renderPieCard('Professional Elective - Slot D', slotDPie)}
+              {renderPieCard('Professional Elective - Slot A', slotAPie)}
+              {renderPieCard('Open Elective - Slot G', openGPie)}
+            </div>
+          </div>
+
+          <div className="groupgrid-card" style={{ marginTop: 'clamp(24px, 6vw, 32px)' }}>
+            <div className="groupgrid-card-header">
+              <div>
+                <h4 style={{ 
+                  margin: '0 0 4px 0', 
+                  fontSize: 'clamp(13px, 3.5vw, 15px)', 
+                  color: 'var(--text-primary)',
+                  fontStyle: 'normal',
+                  fontWeight: 700,
+                  letterSpacing: '0.02em',
+                  textTransform: 'none'
+                }}>
+                  (Find Mates by subject name!)
+                </h4>
+                <p style={{ 
+                  margin: 0,
+                  fontSize: 'clamp(13px, 3.5vw, 14px)',
+                  color: 'var(--text-primary)',
+                  fontStyle: 'normal',
+                  fontWeight: 600,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase'
+                }}>
+                  Sections & subjects
+                </p>
+              </div>
+            </div>
+            <div style={{ padding: 'clamp(16px, 4vw, 24px) 0' }}>
+              <div style={{ marginBottom: 'clamp(16px, 4vw, 20px)' }}>
+                <div style={{ fontSize: 'clamp(12px, 3vw, 13px)', color: 'var(--text-secondary)', marginBottom: 'clamp(10px, 2.5vw, 12px)', letterSpacing: '0.05em' }}>
+                  Filter by section and subject names
+                </div>
+                <div className="groupgrid-filters" style={{ display: 'flex', gap: 'clamp(10px, 2.5vw, 12px)', flexWrap: 'wrap' }}>
+                  <select
+                    className="groupgrid-select"
+                    value={filters.section}
+                    onChange={(e) =>
+                      setFilters((prev) => ({ ...prev, section: e.target.value }))
+                    }
+                    style={{ flex: '1', minWidth: '150px' }}
+                  >
+                    {sectionOptions.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt === 'all' ? 'All sections' : opt}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className="groupgrid-input"
+                    placeholder="Search subject or name"
+                    value={filters.search}
+                    onChange={(e) =>
+                      setFilters((prev) => ({ ...prev, search: e.target.value }))
+                    }
+                    style={{ flex: '2', minWidth: '200px' }}
+                  />
+                </div>
+              </div>
+              <div className="groupgrid-table" style={{ overflowX: 'auto' }}>
+                <div className="groupgrid-table-head" style={{ display: 'grid', gridTemplateColumns: '140px 80px 150px 1fr 1fr 1fr', gap: 'clamp(12px, 3vw, 16px)' }}>
+                  <span>RA</span>
+                  <span>Section</span>
+                  <span>Name</span>
+                  <span>Professional Elective - Slot D</span>
+                  <span>Professional Elective - Slot A</span>
+                  <span>Open Elective - Slot G</span>
+                </div>
+                {filteredEntries.length === 0 ? (
+                  <p className="groupgrid-empty" style={{ padding: 'clamp(20px, 5vw, 24px)' }}>
+                    No entries match the filters yet.
+                  </p>
+                ) : (
+                  <div className="groupgrid-table-body">
+                    {filteredEntries.map((row) => {
+                      const isOwnEntry = entry && entry.registerNumber === row.registerNumber;
+                      const isEditing = editingRow === row.registerNumber && isOwnEntry;
+                      const currentData = isEditing ? editData : {
+                        section: row.section || '',
+                        slotD: row.slotD || '',
+                        slotA: row.slotA || '',
+                        openG: row.openG || '',
+                      };
+                      return (
+                        <div className="groupgrid-table-row" key={row.registerNumber} style={{ display: 'grid', gridTemplateColumns: '140px 80px 150px 1fr 1fr 1fr', gap: 'clamp(12px, 3vw, 16px)', alignItems: 'start' }}>
+                          <span data-label="RA Number" style={{ fontFamily: 'monospace', fontSize: 'clamp(12px, 3vw, 13px)' }}>
+                            {row.registerNumber}
+                          </span>
+                          {isEditing ? (
+                            <span data-label="Section">
+                              <input
+                                className="groupgrid-input"
+                                value={currentData.section}
+                                onChange={(e) => setEditData({ ...editData, section: e.target.value })}
+                                style={{ padding: '6px 8px', fontSize: '12px', width: '100%' }}
+                              />
+                            </span>
+                          ) : (
+                            <span data-label="Section" style={{ fontWeight: 500 }}>
+                              {row.section}
+                            </span>
+                          )}
+                          <span data-label="Name" style={{ fontSize: 'clamp(12px, 3vw, 13px)' }}>
+                            {toProperCase(row.name) || '—'}
+                          </span>
+                          {isEditing ? (
+                            <span data-label="Slot D">
+                              <select
+                                className="groupgrid-input"
+                                value={currentData.slotD}
+                                onChange={(e) => setEditData({ ...editData, slotD: e.target.value })}
+                                style={{ padding: '6px 8px', fontSize: '12px', width: '100%' }}
+                              >
+                                <option value="">Select</option>
+                                {electivesD.map((opt) => (
+                                  <option key={opt.code} value={`${opt.code} — ${opt.title}`}>
+                                    {opt.code} — {opt.title}
+                                  </option>
+                                ))}
+                              </select>
+                            </span>
+                          ) : (
+                            <span data-label="Slot D">
+                              {row.slotD ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                  <span style={{ fontSize: 'clamp(12px, 3vw, 13px)', fontWeight: 500 }}>
+                                    {row.slotD.split(' — ')[0]}
+                                  </span>
+                                  {row.slotD.includes(' — ') && (
+                                    <span style={{ fontSize: 'clamp(11px, 2.5vw, 12px)', color: 'var(--text-secondary)' }}>
+                                      {row.slotD.split(' — ')[1]}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                '—'
+                              )}
+                            </span>
+                          )}
+                          {isEditing ? (
+                            <span data-label="Slot A">
+                              <select
+                                className="groupgrid-input"
+                                value={currentData.slotA}
+                                onChange={(e) => setEditData({ ...editData, slotA: e.target.value })}
+                                style={{ padding: '6px 8px', fontSize: '12px', width: '100%' }}
+                              >
+                                <option value="">Select</option>
+                                {electivesA.map((opt) => (
+                                  <option key={opt.code} value={`${opt.code} — ${opt.title}`}>
+                                    {opt.code} — {opt.title}
+                                  </option>
+                                ))}
+                              </select>
+                            </span>
+                          ) : (
+                            <span data-label="Slot A">
+                              {row.slotA ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                  <span style={{ fontSize: 'clamp(12px, 3vw, 13px)', fontWeight: 500 }}>
+                                    {row.slotA.split(' — ')[0]}
+                                  </span>
+                                  {row.slotA.includes(' — ') && (
+                                    <span style={{ fontSize: 'clamp(11px, 2.5vw, 12px)', color: 'var(--text-secondary)' }}>
+                                      {row.slotA.split(' — ')[1]}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                '—'
+                              )}
+                            </span>
+                          )}
+                          {isEditing ? (
+                            <span data-label="Slot G">
+                              <select
+                                className="groupgrid-input"
+                                value={currentData.openG}
+                                onChange={(e) => setEditData({ ...editData, openG: e.target.value })}
+                                style={{ padding: '6px 8px', fontSize: '12px', width: '100%' }}
+                              >
+                                <option value="">Select</option>
+                                {electivesG.map((opt) => (
+                                  <option key={opt.code} value={`${opt.code} — ${opt.title}`}>
+                                    {opt.code} — {opt.title}
+                                  </option>
+                                ))}
+                              </select>
+                            </span>
+                          ) : (
+                            <span data-label="Slot G">
+                              {row.openG ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                  <span style={{ fontSize: 'clamp(12px, 3vw, 13px)', fontWeight: 500 }}>
+                                    {row.openG.split(' — ')[0]}
+                                  </span>
+                                  {row.openG.includes(' — ') && (
+                                    <span style={{ fontSize: 'clamp(11px, 2.5vw, 12px)', color: 'var(--text-secondary)' }}>
+                                      {row.openG.split(' — ')[1]}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                '—'
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {step === 'form' && !hasPoolAccess && (
+        <div className="groupgrid-card groupgrid-hint">
+          <strong>Pool Result access is locked.</strong> Submit the form above to unlock the pool results
+          page.
+        </div>
+      )}
+    </div>
+  );
+}
+

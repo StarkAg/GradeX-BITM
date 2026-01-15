@@ -1,0 +1,135 @@
+{
+  "success": true,
+  "data": {
+    "studentInfo": {
+      "Registration Number": "RA2311003012233",
+      "Name": "USHIKA LUNAWAT",
+      "Combo / Batch": "1/2",
+      "Mob": "1234567890",
+      "Academic Year": "AY2025-26-EVEN",
+      "Program": "B.Tech",
+      "Department": "Computer Science and Engineering"
+    },
+    "courses": [
+      {
+        "sno": "1",
+        "courseCode": "21CSP301T",
+        "courseTitle": "Cloud Computing",
+        "credit": "3",
+        "regnType": "Regular",
+        "category": "Core",
+        "courseType": "Theory",
+        "facultyName": "Dr. John Doe (123456)",
+        "slot": "A",
+        "roomNo": "LH1005",
+        "academicYear": "AY2025-26-EVEN"
+      },
+      {
+        "sno": "2",
+        "courseCode": "21CSP302L",
+        "courseTitle": "Data Science",
+        "credit": "3",
+        "regnType": "Regular",
+        "category": "Core",
+        "courseType": "Theory",
+        "facultyName": "Dr. Jane Smith (123457)",
+        "slot": "C",
+        "roomNo": "LH606",
+        "academicYear": "AY2025-26-EVEN"
+      },
+      {
+        "sno": "3",
+        "courseCode": "21CSP303T",
+        "courseTitle": "Water Pollution and its Management",
+        "credit": "2",
+        "regnType": "Regular",
+        "category": "Elective",
+        "courseType": "Theory",
+        "facultyName": "Dr. Bob Wilson (123458)",
+        "slot": "E",
+        "roomNo": "TP 1102",
+        "academicYear": "AY2025-26-EVEN"
+      },
+      {
+        "sno": "4",
+        "courseCode": "21CSP304L",
+        "courseTitle": "Software Engineering and Project Management",
+        "credit": "3",
+        "regnType": "Regular",
+        "category": "Core",
+        "courseType": "Theory",
+        "facultyName": "Dr. Alice Brown (123459)",
+        "slot": "F",
+        "roomNo": "LH606",
+        "academicYear": "AY2025-26-EVEN"
+      },
+      {
+        "sno": "5",
+        "courseCode": "21CSP305T",
+        "courseTitle": "Compiler Design",
+        "credit": "3",
+        "regnType": "Regular",
+        "category": "Core",
+        "courseType": "Theory",
+        "facultyName": "Dr. Charlie Davis (123460)",
+        "slot": "G",
+        "roomNo": "LH606",
+        "academicYear": "AY2025-26-EVEN"
+      },
+      {
+        "sno": "6",
+        "courseCode": "21CSP306L",
+        "courseTitle": "Cloud Product and Platform Engineering",
+        "credit": "3",
+        "regnType": "Regular",
+        "category": "Core",
+        "courseType": "Theory",
+        "facultyName": "Dr. Diana White (123461)",
+        "slot": "D",
+        "roomNo": "CLS619",
+        "academicYear": "AY2025-26-EVEN"
+      },
+      {
+        "sno": "7",
+        "courseCode": "21CSP307T",
+        "courseTitle": "Composite Materials",
+        "credit": "3",
+        "regnType": "Regular",
+        "category": "Elective",
+        "courseType": "Theory",
+        "facultyName": "Dr. Frank Green (123462)",
+        "slot": "P23-P24",
+        "roomNo": "CLS419-B",
+        "academicYear": "AY2025-26-EVEN"
+      },
+      {
+        "sno": "8",
+        "courseCode": "21CSP308L",
+        "courseTitle": "Indian Traditional Knowledge",
+        "credit": "0",
+        "regnType": "Regular",
+        "category": "Mandatory",
+        "courseType": "Theory",
+        "facultyName": "Dr. Arun V (103109)",
+        "slot": "L51-L52",
+        "roomNo": "Online",
+        "academicYear": "AY2025-26-EVEN"
+      },
+      {
+        "sno": "9",
+        "courseCode": "21CSP309T",
+        "courseTitle": "Project",
+        "credit": "3",
+        "regnType": "Regular",
+        "category": "Project Course",
+        "courseType": "Practical",
+        "facultyName": "Dr. Arun V (103109)",
+        "slot": "L51-L52",
+        "roomNo": "",
+        "academicYear": "AY2025-26-EVEN"
+      }
+    ]
+  },
+  "duration": 5432
+}
+
