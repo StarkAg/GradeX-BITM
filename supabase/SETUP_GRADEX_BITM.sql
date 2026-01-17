@@ -34,23 +34,39 @@ CREATE TABLE manual_attendance (
   UNIQUE(user_id, subject_code)
 );
 
--- 5. Create indexes
+-- 5. Create daily_attendance table (for calendar view)
+CREATE TABLE daily_attendance (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  subject_code TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('present', 'absent')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(user_id, date, subject_code)
+);
+
+-- 6. Create indexes
 CREATE INDEX idx_user_subjects_user ON user_subjects(user_id);
 CREATE INDEX idx_manual_attendance_user ON manual_attendance(user_id);
 CREATE INDEX idx_manual_attendance_subject ON manual_attendance(subject_code);
+CREATE INDEX idx_daily_attendance_user ON daily_attendance(user_id);
+CREATE INDEX idx_daily_attendance_date ON daily_attendance(date);
 
--- 6. Enable RLS
+-- 7. Enable RLS
 ALTER TABLE user_subjects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE manual_attendance ENABLE ROW LEVEL SECURITY;
+ALTER TABLE daily_attendance ENABLE ROW LEVEL SECURITY;
 
--- 7. Drop existing policies
+-- 8. Drop existing policies
 DROP POLICY IF EXISTS "Allow all operations" ON user_subjects;
 DROP POLICY IF EXISTS "Allow all operations" ON manual_attendance;
+DROP POLICY IF EXISTS "Allow all operations" ON daily_attendance;
 
--- 8. Create permissive policies (custom auth)
+-- 9. Create permissive policies (custom auth)
 CREATE POLICY "Allow all operations" ON user_subjects FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all operations" ON manual_attendance FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all operations" ON daily_attendance FOR ALL USING (true) WITH CHECK (true);
 
--- 9. Verify setup
+-- 10. Verify setup
 SELECT 'Setup complete!' as status;
-SELECT table_name FROM information_schema.tables WHERE table_name IN ('user_subjects', 'manual_attendance');
+SELECT table_name FROM information_schema.tables WHERE table_name IN ('user_subjects', 'manual_attendance', 'daily_attendance');

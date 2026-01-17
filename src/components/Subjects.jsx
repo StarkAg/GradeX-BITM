@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { getSubjects, addSubject, removeSubject, saveSubjects, getSubjectColor, DEFAULT_SUBJECTS } from '../lib/subjects';
 import ConfirmModal from './ConfirmModal';
+import { logActivity } from '../lib/activity-log';
+import { isViewOnlyMode } from '../lib/view-only';
 
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const TIME_SLOTS = [
   { period: 1, time: '8:30 - 9:20' },
   { period: 2, time: '9:30 - 10:20' },
@@ -34,6 +36,18 @@ export default function Subjects() {
   const [newSubject, setNewSubject] = useState({ name: '', code: '', room: 'LH-11', isLab: false, schedule: {} });
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, code: null });
   const [resetConfirm, setResetConfirm] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [viewOnly, setViewOnly] = useState(false);
+
+  useEffect(() => {
+    setViewOnly(isViewOnlyMode());
+  }, []);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
     setSubjects(getSubjects());
@@ -46,6 +60,11 @@ export default function Subjects() {
     localStorage.setItem('gradex_timetable', JSON.stringify(timetable));
   }, [timetable]);
 
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
   const toggleScheduleSlot = (day, slotIndex) => {
     setNewSubject(prev => {
       const schedule = { ...prev.schedule };
@@ -56,32 +75,85 @@ export default function Subjects() {
     });
   };
 
-  const handleAddSubject = () => {
-    if (!newSubject.name.trim()) return;
+  const handleAddSubject = async () => {
+    if (!newSubject.name.trim() || viewOnly) return; // Prevent edits in view-only mode
     const code = newSubject.code.trim() || newSubject.name.split(' ').map(w => w[0]).join('').toUpperCase();
     
-    addSubject({ name: newSubject.name.trim(), code, room: newSubject.room || 'LH-11' });
-    
-    // Add to timetable
-    const newTimetable = { ...timetable };
-    Object.keys(newSubject.schedule).forEach(key => {
-      const [day, slotIndex] = key.split('-');
-      if (!newTimetable[day]) newTimetable[day] = Array(9).fill(null);
-      newTimetable[day][parseInt(slotIndex)] = { code, room: newSubject.room || 'LH-11', isLab: newSubject.isLab };
-    });
-    setTimetable(newTimetable);
+    if (newSubject.isEdit) {
+      // Update existing subject
+      const updatedSubjects = subjects.map(s => s.code === code ? { ...s, name: newSubject.name.trim(), room: newSubject.room || 'LH-11' } : s);
+      await saveSubjects(updatedSubjects);
+      logActivity('subject_updated', {
+        name: newSubject.name.trim(),
+        code,
+        room: newSubject.room || 'LH-11'
+      });
+      
+      // Clear old schedule and add new
+      const newTimetable = { ...timetable };
+      DAYS.forEach(day => {
+        if (newTimetable[day]) {
+          newTimetable[day] = newTimetable[day].map(cell => cell?.code === code ? null : cell);
+        }
+      });
+      Object.keys(newSubject.schedule).forEach(key => {
+        const [day, slotIndex] = key.split('-');
+        if (!newTimetable[day]) newTimetable[day] = Array(9).fill(null);
+        newTimetable[day][parseInt(slotIndex)] = { code, room: newSubject.room || 'LH-11', isLab: newSubject.isLab };
+      });
+      setTimetable(newTimetable);
+    } else {
+      await addSubject({ name: newSubject.name.trim(), code, room: newSubject.room || 'LH-11' });
+      logActivity('subject_added', {
+        name: newSubject.name.trim(),
+        code,
+        room: newSubject.room || 'LH-11'
+      });
+      
+      // Add to timetable
+      const newTimetable = { ...timetable };
+      Object.keys(newSubject.schedule).forEach(key => {
+        const [day, slotIndex] = key.split('-');
+        if (!newTimetable[day]) newTimetable[day] = Array(9).fill(null);
+        newTimetable[day][parseInt(slotIndex)] = { code, room: newSubject.room || 'LH-11', isLab: newSubject.isLab };
+      });
+      setTimetable(newTimetable);
+    }
     
     setNewSubject({ name: '', code: '', room: 'LH-11', isLab: false, schedule: {} });
     setShowAddModal(false);
   };
 
+  const handleEditSubject = (subject) => {
+    if (viewOnly) return; // Prevent edits in view-only mode
+    // Build schedule from timetable
+    const schedule = {};
+    DAYS.forEach(day => {
+      if (timetable[day]) {
+        timetable[day].forEach((cell, idx) => {
+          if (cell?.code === subject.code) {
+            schedule[`${day}-${idx}`] = true;
+          }
+        });
+      }
+    });
+    setNewSubject({ name: subject.name, code: subject.code, room: subject.room || 'LH-11', isLab: subject.isLab || false, schedule, isEdit: true });
+    setShowAddModal(true);
+  };
+
   const handleDeleteSubject = (code) => {
+    if (viewOnly) return; // Prevent edits in view-only mode
     setDeleteConfirm({ open: true, code });
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (deleteConfirm.code) {
-      removeSubject(deleteConfirm.code);
+      const subject = subjects.find(s => s.code === deleteConfirm.code);
+      await removeSubject(deleteConfirm.code);
+      logActivity('subject_removed', {
+        name: subject?.name || deleteConfirm.code,
+        code: deleteConfirm.code
+      });
       const newTimetable = { ...timetable };
       DAYS.forEach(day => {
         if (newTimetable[day]) {
@@ -94,47 +166,97 @@ export default function Subjects() {
   };
 
   const handleReset = () => {
+    if (viewOnly) return; // Prevent edits in view-only mode
     setResetConfirm(true);
   };
 
-  const confirmReset = () => {
-    saveSubjects([...DEFAULT_SUBJECTS]);
+  const confirmReset = async () => {
+    if (viewOnly) return; // Prevent edits in view-only mode
+    await saveSubjects([...DEFAULT_SUBJECTS]);
     setTimetable(DEFAULT_TIMETABLE);
     localStorage.setItem('gradex_timetable', JSON.stringify(DEFAULT_TIMETABLE));
     setResetConfirm(false);
   };
 
   return (
-    <div style={{ width: '100%', maxWidth: '1200px', margin: '0 auto' }}>
-      <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+    <div style={{ 
+      width: '100%', 
+      height: isMobile ? 'calc(100dvh - 50px - 70px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))' : 'calc(100vh - 55px)',
+      paddingBottom: isMobile ? `calc(20px + env(safe-area-inset-bottom, 0px))` : '20px',
+      display: 'flex', 
+      flexDirection: 'column', 
+      overflow: 'hidden' 
+    }}>
+      <div style={{ marginBottom: isMobile ? '12px' : '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', flexShrink: 0 }}>
         <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 4px 0' }}>Subject Management</h1>
-          <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>{subjects.length} subjects • Shared across Timetable & Attendance</p>
+          <h1 style={{ fontSize: isMobile ? '20px' : '24px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 4px 0' }}>Subject Management</h1>
+          <p style={{ fontSize: isMobile ? '12px' : '14px', color: 'var(--text-secondary)', margin: 0 }}>{subjects.length} subjects • Shared across Timetable & Attendance</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={handleReset} style={{ padding: '10px 16px', fontSize: '13px', fontWeight: 500, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', borderRadius: '8px', cursor: 'pointer' }}>Reset</button>
-          <button onClick={() => setShowAddModal(true)} style={{ padding: '10px 20px', fontSize: '13px', fontWeight: 500, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {!viewOnly && (
+            <button onClick={handleReset} style={{ padding: isMobile ? '8px 12px' : '10px 16px', fontSize: isMobile ? '12px' : '13px', fontWeight: 500, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', borderRadius: '8px', cursor: 'pointer' }}>Reset</button>
+          )}
+          <button 
+            onClick={() => !viewOnly && setShowAddModal(true)} 
+            disabled={viewOnly}
+            style={{ 
+              padding: isMobile ? '8px 16px' : '10px 20px', 
+              fontSize: isMobile ? '12px' : '13px', 
+              fontWeight: 500, 
+              border: 'none', 
+              background: viewOnly ? 'var(--hover-bg)' : 'var(--text-primary)', 
+              color: viewOnly ? 'var(--text-secondary)' : 'var(--bg-primary)', 
+              borderRadius: '8px', 
+              cursor: viewOnly ? 'not-allowed' : 'pointer', 
+              opacity: viewOnly ? 0.5 : 1,
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '6px' 
+            }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Add Subject
           </button>
         </div>
       </div>
 
-      <div style={{ padding: '12px 16px', background: 'var(--hover-bg)', border: '1px solid var(--border-color)', borderRadius: '8px', marginBottom: '20px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+      {viewOnly && (
+        <div style={{
+          padding: isMobile ? '8px 12px' : '10px 16px',
+          marginBottom: isMobile ? '8px' : '12px',
+          background: 'rgba(251, 191, 36, 0.1)',
+          border: '1px solid rgba(251, 191, 36, 0.3)',
+          borderRadius: '8px',
+          color: '#fbbf24',
+          fontSize: isMobile ? '11px' : '12px',
+          textAlign: 'center',
+          fontWeight: 500,
+          flexShrink: 0
+        }}>
+          View Only Mode - Editing disabled (accessed via Admin Panel)
+        </div>
+      )}
+      <div style={{ padding: isMobile ? '10px 12px' : '12px 16px', background: 'var(--hover-bg)', border: '1px solid var(--border-color)', borderRadius: '8px', marginBottom: isMobile ? '12px' : '16px', fontSize: isMobile ? '11px' : '13px', color: 'var(--text-secondary)', flexShrink: 0 }}>
         Subjects added here appear in both <strong style={{ color: 'var(--text-primary)' }}>Schedule</strong> and <strong style={{ color: 'var(--text-primary)' }}>Attendance</strong>.
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gridTemplateRows: isMobile ? 'auto' : 'repeat(5, 1fr)', gap: isMobile ? '10px' : '12px', flex: 1, overflow: 'hidden', minHeight: 0 }}>
         {subjects.map((subject, idx) => (
-          <div key={subject.code} style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: getSubjectColor(idx), display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px', color: '#000', flexShrink: 0 }}>{subject.code}</div>
+          <div key={subject.code} style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: isMobile ? '12px' : '16px', display: 'flex', alignItems: 'center', gap: isMobile ? '12px' : '12px', minHeight: 0 }}>
+            <div style={{ width: isMobile ? '40px' : '50px', height: isMobile ? '40px' : '50px', borderRadius: '8px', background: getSubjectColor(idx), display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: isMobile ? '12px' : '16px', color: '#000', flexShrink: 0 }}>{subject.code}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 2px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subject.name}</h3>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0 }}>{subject.room}</p>
+              <h3 style={{ fontSize: isMobile ? '14px' : '16px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 2px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subject.name}</h3>
+              <p style={{ fontSize: isMobile ? '12px' : '13px', color: 'var(--text-secondary)', margin: 0 }}>{subject.room}</p>
             </div>
-            <button onClick={() => handleDeleteSubject(subject.code)} style={{ padding: '8px', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', color: 'var(--text-tertiary)', display: 'flex' }} title="Delete">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            </button>
+            {!viewOnly && (
+              <button onClick={() => handleEditSubject(subject)} style={{ padding: isMobile ? '8px' : '10px', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', flexShrink: 0 }} title="Edit">
+                <svg width={isMobile ? '16' : '18'} height={isMobile ? '16' : '18'} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+            )}
+            {!viewOnly && (
+              <button onClick={() => handleDeleteSubject(subject.code)} style={{ padding: isMobile ? '8px' : '10px', background: 'transparent', border: '1px solid #f87171', borderRadius: '6px', cursor: 'pointer', color: '#f87171', display: 'flex', flexShrink: 0 }} title="Delete">
+                <svg width={isMobile ? '16' : '18'} height={isMobile ? '16' : '18'} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -143,7 +265,9 @@ export default function Subjects() {
         <div style={{ textAlign: 'center', padding: '60px 20px', background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '12px' }}>
           <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>No Subjects</h3>
           <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '20px' }}>Add subjects to manage your timetable and attendance.</p>
-          <button onClick={() => setShowAddModal(true)} style={{ padding: '12px 24px', fontSize: '14px', fontWeight: 500, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', borderRadius: '8px', cursor: 'pointer' }}>Add Your First Subject</button>
+          {!viewOnly && (
+            <button onClick={() => setShowAddModal(true)} style={{ padding: '12px 24px', fontSize: '14px', fontWeight: 500, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', borderRadius: '8px', cursor: 'pointer' }}>Add Your First Subject</button>
+          )}
         </div>
       )}
 
@@ -151,7 +275,7 @@ export default function Subjects() {
       {showAddModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', overflowY: 'auto' }} onClick={(e) => e.target === e.currentTarget && setShowAddModal(false)}>
           <div style={{ background: 'var(--card-bg)', borderRadius: '12px', padding: '24px', width: '100%', maxWidth: '700px', border: '1px solid var(--border-color)', maxHeight: '90vh', overflowY: 'auto' }}>
-            <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 20px 0' }}>Add New Subject</h2>
+            <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 20px 0' }}>{newSubject.isEdit ? 'Edit Subject' : 'Add New Subject'}</h2>
             
             <div style={{ display: 'grid', gridTemplateColumns: window.innerWidth <= 480 ? '1fr' : '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
               <div>
@@ -198,10 +322,12 @@ export default function Subjects() {
                           const isSelected = newSubject.schedule[`${day}-${slotIndex}`];
                           const existingCell = timetable[day]?.[slotIndex];
                           const isOccupied = existingCell && existingCell.code;
+                          const isOwnSlot = isOccupied && existingCell.code === newSubject.code;
+                          const canToggle = !isOccupied || isOwnSlot;
                           return (
                             <td key={slot.period} style={{ padding: '2px', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-                              <button onClick={() => !isOccupied && toggleScheduleSlot(day, slotIndex)} disabled={isOccupied} style={{ width: '100%', padding: '6px 2px', border: 'none', borderRadius: '3px', cursor: isOccupied ? 'not-allowed' : 'pointer', background: isSelected ? '#4ade80' : isOccupied ? 'var(--hover-bg)' : 'transparent', color: isSelected ? '#000' : isOccupied ? 'var(--text-tertiary)' : 'var(--text-secondary)', fontSize: '9px', transition: 'all 0.2s' }}>
-                                {isOccupied ? existingCell.code : isSelected ? '✓' : '—'}
+                              <button onClick={() => canToggle && toggleScheduleSlot(day, slotIndex)} disabled={!canToggle} style={{ width: '100%', padding: '6px 2px', border: 'none', borderRadius: '3px', cursor: canToggle ? 'pointer' : 'not-allowed', background: isSelected ? '#4ade80' : (isOccupied && !isOwnSlot) ? 'var(--hover-bg)' : 'transparent', color: isSelected ? '#000' : (isOccupied && !isOwnSlot) ? 'var(--text-tertiary)' : 'var(--text-secondary)', fontSize: '9px', transition: 'all 0.2s' }}>
+                                {(isOccupied && !isOwnSlot) ? existingCell.code : isSelected ? '✓' : '—'}
                               </button>
                             </td>
                           );
@@ -218,7 +344,7 @@ export default function Subjects() {
 
             <div style={{ display: 'flex', gap: '12px' }}>
               <button onClick={() => setShowAddModal(false)} style={{ flex: 1, padding: '10px', fontSize: '14px', fontWeight: 500, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-primary)', borderRadius: '8px', cursor: 'pointer' }}>Cancel</button>
-              <button onClick={handleAddSubject} disabled={!newSubject.name.trim()} style={{ flex: 1, padding: '10px', fontSize: '14px', fontWeight: 500, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', borderRadius: '8px', cursor: !newSubject.name.trim() ? 'not-allowed' : 'pointer', opacity: !newSubject.name.trim() ? 0.5 : 1 }}>Add Subject</button>
+              <button onClick={handleAddSubject} disabled={!newSubject.name.trim()} style={{ flex: 1, padding: '10px', fontSize: '14px', fontWeight: 500, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', borderRadius: '8px', cursor: !newSubject.name.trim() ? 'not-allowed' : 'pointer', opacity: !newSubject.name.trim() ? 0.5 : 1 }}>{newSubject.isEdit ? 'Save Changes' : 'Add Subject'}</button>
             </div>
           </div>
         </div>

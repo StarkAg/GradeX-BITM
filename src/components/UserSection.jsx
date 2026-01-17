@@ -7,12 +7,15 @@ export default function UserSection({ isCollapsed, onLogout }) {
   const [showModal, setShowModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, inputValue: '' });
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+  const [savingName, setSavingName] = useState(false);
 
   useEffect(() => {
     loadUserData();
     
     const handleStorageChange = () => {
-      loadUserData();
+        loadUserData();
     };
     
     window.addEventListener('storage', handleStorageChange);
@@ -34,17 +37,40 @@ export default function UserSection({ isCollapsed, onLogout }) {
   }, [showModal]);
 
   function loadUserData() {
-    const userId = localStorage.getItem('gradex_user_id');
+      const userId = localStorage.getItem('gradex_user_id');
     const username = localStorage.getItem('gradex_username');
     const name = localStorage.getItem('gradex_user_name');
 
     if (userId && username) {
       setUserData({
+        id: userId,
         name: name || username,
         username: username
       });
     }
   }
+
+  const handleSaveName = async () => {
+    const userId = localStorage.getItem('gradex_user_id');
+    if (!nameInput.trim() || !userId || savingName) return;
+    
+    setSavingName(true);
+    try {
+      await supabase
+        .from('users')
+        .update({ name: nameInput.trim() })
+        .eq('id', userId);
+      
+      localStorage.setItem('gradex_user_name', nameInput.trim());
+      setUserData(prev => ({ ...prev, name: nameInput.trim() }));
+      setEditingName(false);
+      window.dispatchEvent(new Event('storage'));
+    } catch (err) {
+      console.error('Error saving name:', err);
+    } finally {
+      setSavingName(false);
+    }
+  };
 
   const handleDeleteAccount = () => {
     setDeleteConfirm({ open: true, inputValue: '' });
@@ -58,6 +84,8 @@ export default function UserSection({ isCollapsed, onLogout }) {
     setDeleteConfirm({ open: false, inputValue: '' });
     setShowModal(false);
     try {
+      // Delete all user data immediately - await each to ensure completion
+      await supabase.from('daily_attendance').delete().eq('user_id', userId);
       await supabase.from('manual_attendance').delete().eq('user_id', userId);
       await supabase.from('user_subjects').delete().eq('user_id', userId);
       await supabase.from('users').delete().eq('id', userId);
@@ -144,15 +172,15 @@ export default function UserSection({ isCollapsed, onLogout }) {
               }}>
                 {userDisplayName}
               </span>
-              <span style={{
-                fontSize: '12px',
-                color: 'var(--text-secondary)',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}>
+                <span style={{
+                  fontSize: '12px',
+                  color: 'var(--text-secondary)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}>
                 @{userData.username}
-              </span>
+                </span>
             </div>
           )}
         </button>
@@ -246,47 +274,145 @@ export default function UserSection({ isCollapsed, onLogout }) {
             <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {/* Name */}
               <div>
-                <span style={{
+                  <span style={{
                   fontSize: '11px',
-                  color: 'var(--text-tertiary)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  fontWeight: 600,
+                    color: 'var(--text-tertiary)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    fontWeight: 600,
                   display: 'block',
                   marginBottom: '6px'
-                }}>
-                  Name
-                </span>
-                <span style={{
-                  fontSize: '16px',
-                  color: 'var(--text-primary)',
-                  fontWeight: 500,
-                }}>
-                  {userData.name}
-                </span>
-              </div>
+                  }}>
+                    Name
+                  </span>
+                  {editingName ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="text"
+                        value={nameInput}
+                        onChange={(e) => setNameInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveName();
+                          if (e.key === 'Escape') {
+                            setEditingName(false);
+                            setNameInput(userData.name);
+                          }
+                        }}
+                        autoFocus
+                        style={{
+                          flex: 1,
+                          padding: '8px 12px',
+                          fontSize: '16px',
+                          fontWeight: 500,
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '8px',
+                          background: 'var(--bg-primary)',
+                          color: 'var(--text-primary)',
+                          outline: 'none'
+                        }}
+                      />
+                      <button
+                        onClick={handleSaveName}
+                        disabled={savingName || !nameInput.trim()}
+                        style={{
+                          padding: '8px',
+                          border: 'none',
+                          background: '#4ade80',
+                          color: '#000',
+                          borderRadius: '6px',
+                          cursor: savingName || !nameInput.trim() ? 'not-allowed' : 'pointer',
+                          opacity: savingName || !nameInput.trim() ? 0.5 : 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingName(false);
+                          setNameInput(userData.name);
+                        }}
+                        style={{
+                          padding: '8px',
+                          border: '1px solid var(--border-color)',
+                          background: 'transparent',
+                          color: 'var(--text-secondary)',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{
+                    fontSize: '16px',
+                    color: 'var(--text-primary)',
+                    fontWeight: 500,
+                        flex: 1
+                  }}>
+                    {userData.name}
+                  </span>
+                      <button
+                        onClick={() => {
+                          setNameInput(userData.name);
+                          setEditingName(true);
+                        }}
+                        style={{
+                          padding: '6px',
+                          border: '1px solid var(--border-color)',
+                          background: 'transparent',
+                          color: 'var(--text-secondary)',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                  display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'var(--hover-bg)';
+                          e.currentTarget.style.color = 'var(--text-primary)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'transparent';
+                          e.currentTarget.style.color = 'var(--text-secondary)';
+                        }}
+                        title="Edit Name"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                      </button>
+                </div>
+              )}
+                </div>
 
               {/* Username */}
               <div>
-                <span style={{
+                  <span style={{
                   fontSize: '11px',
-                  color: 'var(--text-tertiary)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  fontWeight: 600,
+                    color: 'var(--text-tertiary)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    fontWeight: 600,
                   display: 'block',
                   marginBottom: '6px'
                 }}>
                   Username
-                </span>
-                <span style={{
-                  fontSize: '16px',
-                  color: 'var(--text-primary)',
-                  fontWeight: 500,
-                }}>
+                  </span>
+                  <span style={{
+                    fontSize: '16px',
+                    color: 'var(--text-primary)',
+                    fontWeight: 500,
+                  }}>
                   @{userData.username}
-                </span>
-              </div>
+                  </span>
+                </div>
 
               {/* Sign Out */}
               <button

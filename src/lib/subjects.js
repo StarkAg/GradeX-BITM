@@ -11,16 +11,45 @@ export const DEFAULT_SUBJECTS = [
   { name: 'Public Speaking & Creative Writing', code: 'PSCW', room: 'LH-11' },
 ];
 
-// Color palette
+// Color palette - Lightened luxury palette (28 colors, safe to cycle, low visual fatigue)
 export const colorPalette = [
-  '#FFF200', '#F8B739', '#92D050', '#C9DA2A', '#00B050', '#52BE80', '#1ABC9C',
-  '#4ECDC4', '#45B7D1', '#3498DB', '#4A86E8', '#6FA8DC', '#5DADE2', '#8EA9DB',
-  '#85C1E2', '#98D8C8', '#C6EFCE', '#F7DC6F', '#F4B183', '#F39C12', '#E67E22',
-  '#B7B51A', '#BB8FCE', '#9B59B6', '#FF6B6B', '#EC7063', '#E74C3C', '#16A085', '#D35400',
+  '#FFF7A8', // Soft Lemon
+  '#FFD9A0', // Champagne Peach
+  '#CFF0C3', // Pastel Green
+  '#E6F2A2', // Light Lime
+  '#A8E6B8', // Fresh Mint Green
+  '#BFE9D5', // Soft Teal Green
+  '#BFEFE6', // Pale Turquoise
+  '#CFF5F2', // Ice Turquoise
+  '#CFEAF5', // Soft Sky Blue
+  '#C6E2FF', // Powder Blue
+  '#D6E4FF', // Mist Blue
+  '#E3EEFF', // Cloud Blue
+  '#D9F0FF', // Light Cyan
+  '#E1E8F8', // Soft Periwinkle
+  '#E6F2FA', // Frost Blue
+  '#E2F4EE', // Mint Cream
+  '#EDF9F0', // Pale Sage
+  '#FFF3BF', // Vanilla Yellow
+  '#FFE0C7', // Soft Peach
+  '#FFD8A8', // Light Amber
+  '#FFCCA0', // Muted Orange
+  '#E8E6B8', // Soft Olive
+  '#E9DFF2', // Lavender Mist
+  '#E1D2F0', // Light Purple
+  '#FFD6D6', // Blush Coral
+  '#FFD0CC', // Soft Salmon
+  '#FFBDBD', // Muted Red
+  '#CFEDE6', // Light Teal
 ];
 
 export function getSubjectColor(index) {
   return colorPalette[index % colorPalette.length];
+}
+
+// Get day color from palette
+export function getDayColor(dayIndex) {
+  return colorPalette[dayIndex % colorPalette.length];
 }
 
 // Get user ID
@@ -142,16 +171,16 @@ export function getSubjects() {
   return [...DEFAULT_SUBJECTS];
 }
 
-// Save to localStorage and sync to DB
-export function saveSubjects(subjects) {
+// Save to localStorage and sync to DB immediately
+export async function saveSubjects(subjects) {
   localStorage.setItem('gradex_subjects', JSON.stringify(subjects));
   window.dispatchEvent(new Event('subjectsUpdated'));
-  // Sync to DB in background
-  saveSubjectsToDB(subjects);
+  // Sync to DB immediately - await to ensure it completes
+  await saveSubjectsToDB(subjects);
 }
 
-// Add subject locally and sync
-export function addSubject(subject) {
+// Add subject locally and sync immediately
+export async function addSubject(subject) {
   const subjects = getSubjects();
   const newSubject = {
     name: subject.name,
@@ -159,17 +188,17 @@ export function addSubject(subject) {
     room: subject.room || 'LH-11'
   };
   subjects.push(newSubject);
-  saveSubjects(subjects);
+  await saveSubjects(subjects);
   return subjects;
 }
 
-// Remove subject locally and sync
-export function removeSubject(code) {
+// Remove subject locally and sync immediately
+export async function removeSubject(code) {
   const subjects = getSubjects();
   const filtered = subjects.filter(s => s.code !== code);
-  saveSubjects(filtered);
-  // Also remove from DB
-  removeSubjectFromDB(code);
+  await saveSubjects(filtered);
+  // Also remove from DB immediately
+  await removeSubjectFromDB(code);
   return filtered;
 }
 

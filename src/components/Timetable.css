@@ -368,7 +368,7 @@
 }
 
 .timetable-day-label {
-  background: #FFFF00;
+  /* Background color is set inline via getDayColor() */
   color: #000000;
   padding: 8px 4px;
   text-align: center;
@@ -383,6 +383,12 @@
   border: 1px solid #000000;
   box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
   box-sizing: border-box;
+  width: 90px;
+  min-width: 90px;
+  max-width: 90px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .timetable-cell {
@@ -529,6 +535,9 @@
   .timetable-day-label {
     padding: 10px 6px;
     font-size: 0.7rem;
+    width: 90px;
+    min-width: 90px;
+    max-width: 90px;
   }
 }
 
@@ -573,7 +582,12 @@
   .timetable-day-label {
     padding: 6px 3px;
     font-size: 0.55rem;
-    width: 60px;
+    width: 55px;
+    min-width: 55px;
+    max-width: 55px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   
   .timetable-header h1 {

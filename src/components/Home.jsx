@@ -13,6 +13,32 @@ export default function Home() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // Lock scroll on Home page (mobile and desktop)
+  useEffect(() => {
+    const originalBodyOverflow = document.body.style.overflow;
+    const originalBodyHeight = document.body.style.height;
+    const originalBodyPosition = document.body.style.position;
+    const originalBodyWidth = document.body.style.width;
+    const originalHtmlOverflow = document.documentElement.style.overflow;
+    const originalHtmlHeight = document.documentElement.style.height;
+    
+    document.body.style.overflow = 'hidden';
+    document.body.style.height = isMobile ? '100dvh' : '100vh';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+    document.documentElement.style.overflow = 'hidden';
+    document.documentElement.style.height = isMobile ? '100dvh' : '100vh';
+    
+    return () => {
+      document.body.style.overflow = originalBodyOverflow;
+      document.body.style.height = originalBodyHeight;
+      document.body.style.position = originalBodyPosition;
+      document.body.style.width = originalBodyWidth;
+      document.documentElement.style.overflow = originalHtmlOverflow;
+      document.documentElement.style.height = originalHtmlHeight;
+    };
+  }, [isMobile]);
+
   const today = new Date();
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const todayName = dayNames[today.getDay()];
@@ -50,6 +76,24 @@ export default function Home() {
       )
     },
     {
+      id: 'calendar',
+      title: 'Calendar',
+      path: '/calendar',
+      icon: (
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="16" y1="2" x2="16" y2="6"></line>
+          <line x1="8" y1="2" x2="8" y2="6"></line>
+          <line x1="3" y1="10" x2="21" y2="10"></line>
+          <path d="M8 14h.01"></path>
+          <path d="M12 14h.01"></path>
+          <path d="M16 14h.01"></path>
+          <path d="M8 18h.01"></path>
+          <path d="M12 18h.01"></path>
+        </svg>
+      )
+    },
+    {
       id: 'subjects',
       title: 'Subjects',
       path: '/subjects',
@@ -65,19 +109,14 @@ export default function Home() {
     }
   ];
   
-  // Disable body scroll on Home page
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, []);
-
   return (
     <div style={{
       width: '100%',
       maxWidth: '800px',
       margin: '0 auto',
       padding: isMobile ? '12px 8px' : 'clamp(20px, 4vw, 40px)',
-      height: isMobile ? 'calc(100dvh - 160px)' : 'calc(100vh - 120px)',
+      paddingBottom: isMobile ? `calc(20px + env(safe-area-inset-bottom, 0px))` : '20px',
+      height: isMobile ? 'calc(100dvh - 50px - 70px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))' : 'calc(100vh - 55px)',
       display: 'flex',
       flexDirection: 'column',
       justifyContent: 'center',
@@ -92,38 +131,38 @@ export default function Home() {
           fontSize: isMobile ? '16px' : '20px',
           color: 'var(--text-secondary)',
           margin: '0 0 16px 0'
-        }}>
+      }}>
           Hi, <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{localStorage.getItem('gradex_user_name') || localStorage.getItem('gradex_username') || 'User'}</span>
         </p>
-        <h1 style={{
+          <h1 style={{
           fontSize: isMobile ? '32px' : 'clamp(40px, 8vw, 56px)',
-          fontWeight: 400,
-          letterSpacing: '0.1em',
+            fontWeight: 400,
+            letterSpacing: '0.1em',
           margin: '0 0 8px 0',
-          color: 'var(--text-primary)',
-          fontFamily: "'AmericanCaptain', 'Bebas Neue', sans-serif",
+            color: 'var(--text-primary)',
+            fontFamily: "'AmericanCaptain', 'Bebas Neue', sans-serif",
           textTransform: 'uppercase'
-        }}>
-          {todayName}
-        </h1>
-        <p style={{
+          }}>
+            {todayName}
+          </h1>
+          <p style={{
           fontSize: isMobile ? '14px' : '18px',
-          color: 'var(--text-secondary)',
+            color: 'var(--text-secondary)',
           margin: 0
-        }}>
-          {formattedDate}
-        </p>
+          }}>
+            {formattedDate}
+          </p>
       </div>
 
       {/* Quick Actions */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
+        gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
         gap: isMobile ? '10px' : '16px',
-        maxWidth: '600px',
+        maxWidth: '700px',
         margin: '0 auto',
         width: '100%'
-      }}>
+        }}>
         {quickActions.map((action) => (
           <Link
             key={action.id}
@@ -166,9 +205,9 @@ export default function Home() {
             }}>
                 {action.icon}
             </div>
-            <h3 style={{
+              <h3 style={{
               fontSize: isMobile ? '14px' : '18px',
-              fontWeight: 600,
+                fontWeight: 600,
               margin: 0,
               color: 'var(--text-primary)'
               }}>

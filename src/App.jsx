@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate, Routes, Route, Navigate, Link } from 'react-router-dom';
-import { Analytics } from '@vercel/analytics/react';
+// Vercel Analytics disabled for VPS deployment
+// import { Analytics } from '@vercel/analytics/react';
 import AdminPortal from './components/AdminPortal';
 const Admin954 = React.lazy(() => 
   import('./components/Admin954').catch(() => ({ default: () => null }))
@@ -12,12 +13,22 @@ import ManualAttendance from './components/ManualAttendance';
 import Subjects from './components/Subjects';
 import Home from './components/Home';
 import AuthPage from './components/AuthPage';
+import AttendanceCalendar from './components/AttendanceCalendar';
+import DemoLogin from './components/DemoLogin';
+import FacultyAttendancePanel from './components/FacultyAttendancePanel';
+import StudentDemoView from './components/StudentDemoView';
 
 const NAV_ITEMS = [
   { id: 'home', label: 'Home', path: '/' },
   { id: 'timetable', label: 'Schedule', path: '/schedule' },
   { id: 'attendance', label: 'Attendance', path: '/attendance' },
+  { id: 'calendar', label: 'Calendar', path: '/calendar' },
   { id: 'subjects', label: 'Subjects', path: '/subjects' },
+  { id: 'marks', label: 'Marks', path: '/marks', comingSoon: true, desktopOnly: true },
+  { id: 'messmenu', label: 'Mess Menu', path: '/messmenu', comingSoon: true, desktopOnly: true },
+  { id: 'expenza', label: 'Expenza', path: '/expenza', comingSoon: true, desktopOnly: true },
+  { id: 'groupgrid', label: 'GroupGrid', path: '/groupgrid', comingSoon: true, desktopOnly: true },
+  { id: 'faculty', label: 'Faculty', path: '/faculty', comingSoon: true, desktopOnly: true },
 ];
 const AUDIO_URL = '/back-in-black.mp3';
 
@@ -109,7 +120,7 @@ export default function App() {
       await syncSubjectsWithDB();
     } catch (err) {
       console.error('Error syncing subjects:', err);
-    }
+      }
     
     // Check if user has a name set
     if (user.name && user.name.trim() && user.name !== user.username) {
@@ -343,9 +354,18 @@ export default function App() {
     );
   }
 
-  // Show auth page if not authenticated
-  if (!isAuthenticated) {
+  // Show auth page if not authenticated (except for /admin954)
+  if (!isAuthenticated && location.pathname !== '/admin954') {
     return <AuthPage onAuthSuccess={handleAuthSuccess} />;
+  }
+
+  // If accessing /admin954 without auth, show minimal layout with just admin panel
+  if (!isAuthenticated && location.pathname === '/admin954') {
+    return (
+      <React.Suspense fallback={<div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>}>
+        <Admin954 />
+      </React.Suspense>
+    );
   }
 
   // Main app
@@ -357,8 +377,16 @@ export default function App() {
         justifyContent: 'space-between', 
         alignItems: 'center', 
         width: '100%',
-        padding: isMobile ? '8px 12px' : undefined,
-        fontSize: isMobile ? '14px' : undefined
+        padding: isMobile ? '8px 12px 4px 12px' : '0 12px 12px 12px',
+        fontSize: isMobile ? '14px' : undefined,
+        position: 'fixed',
+        top: 0,
+        paddingTop: isMobile ? `calc(8px + env(safe-area-inset-top, 0px))` : '12px',
+        left: 0,
+        right: 0,
+        zIndex: 1000,
+        background: 'var(--bg-primary)',
+        boxSizing: 'border-box'
       }}>
           <div className="app-header-left">
             <h1 style={{ 
@@ -366,10 +394,13 @@ export default function App() {
               alignItems: 'center', 
               gap: '4px', 
               lineHeight: 1,
-              fontSize: isMobile ? '1.6em' : undefined,
-              height: isMobile ? '1.3em' : 'auto'
+              fontSize: isMobile ? '1.2em' : '1.4em',
+              height: isMobile ? '1.3em' : 'auto',
+              whiteSpace: 'nowrap',
+              margin: 0,
+              padding: 0
             }}>
-              <span style={{ display: 'flex', alignItems: 'center', lineHeight: 1, height: isMobile ? '1.3em' : 'auto' }}>GradeX</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', lineHeight: 1, whiteSpace: 'nowrap' }}>GradeX - BITM</span>
               <img 
                 src="/arc-reactor.png" 
                 alt="Arc Reactor" 
@@ -377,7 +408,9 @@ export default function App() {
                 style={{ 
                   width: isMobile ? '1.3em' : '1em', 
                   height: isMobile ? '1.3em' : '1em', 
-                  display: 'block',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   objectFit: 'contain',
                   cursor: 'pointer',
                   transition: 'opacity 0.2s ease, filter 0.2s ease',
@@ -385,7 +418,7 @@ export default function App() {
                   flexShrink: 0,
                   margin: 0,
                   padding: 0,
-                  alignSelf: 'center'
+                  verticalAlign: 'middle'
                 }}
                 onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
                 onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
@@ -476,7 +509,7 @@ export default function App() {
       <div style={{
         display: 'flex',
         minHeight: isMobile ? 'calc(100vh - 50px)' : 'calc(100vh - 60px)',
-        marginTop: 0
+        marginTop: isMobile ? `calc(50px + env(safe-area-inset-top, 0px))` : '55px'
       }}>
         <Navigation 
           isCollapsed={isSidebarCollapsed}
@@ -503,20 +536,25 @@ export default function App() {
           <Route path="/timetable" element={<Navigate to="/schedule" replace />} />
           <Route path="/att" element={<ManualAttendance />} />
           <Route path="/attendance" element={<ManualAttendance />} />
+          <Route path="/calendar" element={<AttendanceCalendar />} />
           <Route path="/subjects" element={<Subjects />} />
           <Route path="/user" element={<UserPage />} />
           <Route path="/admin" element={<AdminPortal />} />
           <Route path="/admin954" element={
-            <React.Suspense fallback={<div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>}>
-              <Admin954 />
-            </React.Suspense>
+              <React.Suspense fallback={<div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>}>
+                <Admin954 />
+              </React.Suspense>
           } />
+          <Route path="/demo" element={<DemoLogin />} />
+          <Route path="/demo/faculty" element={<FacultyAttendancePanel />} />
+          <Route path="/demo/student" element={<StudentDemoView />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
       </div>
         <audio ref={audioRef} preload="none" onEnded={() => setIsPlaying(false)} />
-      <Analytics />
+      {/* Vercel Analytics disabled for VPS deployment */}
+      {/* <Analytics /> */}
 
         {/* Name Input Modal */}
         {showNameModal && (

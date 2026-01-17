@@ -10,24 +10,59 @@ import ConfirmModal from './ConfirmModal';
 export default function UserPage() {
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({ subjects: 0, totalClasses: 0 });
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, inputValue: '' });
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+  const [savingName, setSavingName] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const navigate = useNavigate();
 
   useEffect(() => {
     loadUserData();
   }, []);
 
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Lock scroll on mobile
+  useEffect(() => {
+    if (isMobile) {
+      const originalBodyOverflow = document.body.style.overflow;
+      const originalBodyHeight = document.body.style.height;
+      const originalHtmlOverflow = document.documentElement.style.overflow;
+      const originalHtmlHeight = document.documentElement.style.height;
+      
+      document.body.style.overflow = 'hidden';
+      document.body.style.height = '100dvh';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
+      document.documentElement.style.overflow = 'hidden';
+      document.documentElement.style.height = '100dvh';
+      
+      return () => {
+        document.body.style.overflow = originalBodyOverflow;
+        document.body.style.height = originalBodyHeight;
+        document.body.style.position = '';
+        document.body.style.width = '';
+        document.documentElement.style.overflow = originalHtmlOverflow;
+        document.documentElement.style.height = originalHtmlHeight;
+      };
+    }
+  }, [isMobile]);
+
   const loadUserData = async () => {
-    const userId = localStorage.getItem('gradex_user_id');
+      const userId = localStorage.getItem('gradex_user_id');
     const username = localStorage.getItem('gradex_username');
     const name = localStorage.getItem('gradex_user_name');
 
     if (!userId) {
-      setLoading(false);
-      return;
-    }
+        setLoading(false);
+        return;
+      }
 
     try {
       // Get user data
@@ -45,23 +80,6 @@ export default function UserPage() {
         });
       }
 
-      // Get stats
-      const { data: subjects } = await supabase
-        .from('subjects')
-        .select('id')
-        .eq('user_id', userId);
-
-      const { data: attendance } = await supabase
-        .from('manual_attendance')
-        .select('classes_conducted')
-        .eq('user_id', userId);
-
-      const totalClasses = attendance?.reduce((sum, a) => sum + (a.classes_conducted || 0), 0) || 0;
-
-      setStats({
-        subjects: subjects?.length || 0,
-        totalClasses
-      });
     } catch (err) {
       console.error('Error loading user:', err);
     } finally {
@@ -83,6 +101,26 @@ export default function UserPage() {
     window.location.reload();
   };
 
+  const handleSaveName = async () => {
+    if (!nameInput.trim() || !userData?.id || savingName) return;
+    
+    setSavingName(true);
+    try {
+      await supabase
+        .from('users')
+        .update({ name: nameInput.trim() })
+        .eq('id', userData.id);
+      
+      localStorage.setItem('gradex_user_name', nameInput.trim());
+      setUserData(prev => ({ ...prev, name: nameInput.trim() }));
+      setEditingName(false);
+    } catch (err) {
+      console.error('Error saving name:', err);
+    } finally {
+      setSavingName(false);
+    }
+  };
+
   const handleDeleteAccount = () => {
     setDeleteConfirm({ open: true, inputValue: '' });
   };
@@ -94,6 +132,8 @@ export default function UserPage() {
     setDeleting(true);
     setDeleteConfirm({ open: false, inputValue: '' });
     try {
+      // Delete all user data immediately - await each to ensure completion
+      await supabase.from('daily_attendance').delete().eq('user_id', userId);
       await supabase.from('manual_attendance').delete().eq('user_id', userId);
       await supabase.from('user_subjects').delete().eq('user_id', userId);
       await supabase.from('users').delete().eq('id', userId);
@@ -113,14 +153,14 @@ export default function UserPage() {
         alignItems: 'center',
         minHeight: 'calc(100vh - 200px)',
         padding: '40px',
-      }}>
-        <div style={{
-          width: '40px',
-          height: '40px',
-          border: '3px solid var(--border-color)',
+        }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            border: '3px solid var(--border-color)',
           borderTopColor: 'var(--text-primary)',
-          borderRadius: '50%',
-          animation: 'spin 1s linear infinite',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
         }} />
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
@@ -158,36 +198,42 @@ export default function UserPage() {
         </button>
       </div>
     );
-  }
+    }
 
   return (
     <div style={{
       maxWidth: '600px',
       margin: '0 auto',
-      padding: '20px',
+      padding: isMobile ? '16px' : '20px',
+      paddingBottom: isMobile ? `calc(20px + env(safe-area-inset-bottom, 0px))` : '20px',
+      height: isMobile ? 'calc(100dvh - 50px - 70px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))' : 'auto',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
+      overflow: 'hidden'
     }}>
       <div style={{
         background: 'var(--card-bg)',
         border: '1px solid var(--border-color)',
         borderRadius: '12px',
-        padding: '40px',
+        padding: isMobile ? '24px 20px' : '40px',
       }}>
         <div style={{
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: '20px',
+          gap: isMobile ? '12px' : '20px',
         }}>
           {/* Avatar */}
           <div style={{
-            width: '100px',
-            height: '100px',
+            width: isMobile ? '70px' : '100px',
+            height: isMobile ? '70px' : '100px',
             borderRadius: '50%',
             background: 'var(--text-primary)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: '40px',
+            fontSize: isMobile ? '28px' : '40px',
             fontWeight: 600,
             color: 'var(--bg-primary)',
           }}>
@@ -195,17 +241,117 @@ export default function UserPage() {
           </div>
 
           {/* Name & Username */}
-          <div style={{ textAlign: 'center' }}>
+          <div style={{ textAlign: 'center', width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '4px' }}>
+              {editingName ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', maxWidth: '300px' }}>
+                  <input
+                    type="text"
+                    value={nameInput}
+                    onChange={(e) => setNameInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveName();
+                      if (e.key === 'Escape') {
+                        setEditingName(false);
+                        setNameInput(userData.name || userData.username);
+                      }
+                    }}
+                    autoFocus
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      fontSize: isMobile ? '22px' : '28px',
+                      fontWeight: 600,
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '8px',
+                      background: 'var(--bg-primary)',
+                      color: 'var(--text-primary)',
+                      outline: 'none',
+                      textAlign: 'center'
+                    }}
+                  />
+                  <button
+                    onClick={handleSaveName}
+                    disabled={savingName || !nameInput.trim()}
+                    style={{
+                      padding: '8px',
+                      border: 'none',
+                      background: '#4ade80',
+                      color: '#000',
+                      borderRadius: '6px',
+                      cursor: savingName || !nameInput.trim() ? 'not-allowed' : 'pointer',
+                      opacity: savingName || !nameInput.trim() ? 0.5 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditingName(false);
+                      setNameInput(userData.name || userData.username);
+                    }}
+                    style={{
+                      padding: '8px',
+                      border: '1px solid var(--border-color)',
+                      background: 'transparent',
+                      color: 'var(--text-secondary)',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </div>
+              ) : (
+                <>
             <h1 style={{
-              fontSize: '28px',
-              fontWeight: 600,
-              margin: '0 0 4px 0',
+                    fontSize: isMobile ? '22px' : '28px',
+                    fontWeight: 600,
+                    margin: 0,
               color: 'var(--text-primary)',
             }}>
-              {userData.name || userData.username}
+                    {userData.name || userData.username}
             </h1>
+                  <button
+                    onClick={() => {
+                      setNameInput(userData.name || userData.username);
+                      setEditingName(true);
+                    }}
+                    style={{
+                      padding: '6px',
+                      border: '1px solid var(--border-color)',
+                      background: 'transparent',
+                      color: 'var(--text-secondary)',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'var(--hover-bg)';
+                      e.currentTarget.style.color = 'var(--text-primary)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.color = 'var(--text-secondary)';
+                    }}
+                    title="Edit Name"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </button>
+                </>
+              )}
+            </div>
             <p style={{
-              fontSize: '14px',
+              fontSize: isMobile ? '12px' : '14px',
               color: 'var(--text-secondary)',
               margin: 0,
             }}>
@@ -213,106 +359,47 @@ export default function UserPage() {
             </p>
           </div>
 
-          {/* Stats */}
-          <div style={{
-            width: '100%',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, 1fr)',
-            gap: '12px',
-            marginTop: '8px'
-          }}>
-            <div style={{
-              padding: '20px',
-              background: 'var(--hover-bg)',
-              borderRadius: '8px',
-              textAlign: 'center'
-            }}>
-              <div style={{
-                fontSize: '28px',
-                fontWeight: 700,
-                color: 'var(--text-primary)',
-                lineHeight: 1
-              }}>
-                {stats.subjects}
-              </div>
-              <div style={{
-                fontSize: '11px',
-                color: 'var(--text-tertiary)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em',
-                marginTop: '6px'
-              }}>
-                Subjects
-              </div>
-            </div>
-            <div style={{
-              padding: '20px',
-              background: 'var(--hover-bg)',
-              borderRadius: '8px',
-              textAlign: 'center'
-            }}>
-              <div style={{
-                fontSize: '28px',
-                fontWeight: 700,
-                color: 'var(--text-primary)',
-                lineHeight: 1
-              }}>
-                {stats.totalClasses}
-              </div>
-              <div style={{
-                fontSize: '11px',
-                color: 'var(--text-tertiary)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em',
-                marginTop: '6px'
-              }}>
-                Classes Tracked
-              </div>
-            </div>
-          </div>
-
           {/* Account Info */}
           <div style={{
             width: '100%',
-            padding: '16px',
+            padding: isMobile ? '12px' : '16px',
             background: 'var(--hover-bg)',
             borderRadius: '8px',
-            marginTop: '8px'
           }}>
             <div style={{
               fontSize: '11px',
-              color: 'var(--text-tertiary)',
-              textTransform: 'uppercase',
+                color: 'var(--text-tertiary)',
+                textTransform: 'uppercase',
               letterSpacing: '0.1em',
-              marginBottom: '8px'
-            }}>
+              marginBottom: '6px'
+              }}>
               Account Type
-            </div>
-            <div style={{
-              fontSize: '14px',
-              color: 'var(--text-primary)',
+              </div>
+              <div style={{
+              fontSize: isMobile ? '12px' : '14px',
+                color: 'var(--text-primary)',
               fontWeight: 500
-            }}>
+              }}>
               Self-Managed • Cloud Sync Enabled
-            </div>
-          </div>
+                </div>
+              </div>
 
-          {/* Logout Button */}
-          <button
+            {/* Logout Button */}
+            <button
             onClick={handleLogout}
-            style={{
-              marginTop: '12px',
-              padding: '12px 24px',
-              fontSize: '14px',
+              style={{
+                marginTop: '8px',
+              padding: isMobile ? '10px 20px' : '12px 24px',
+              fontSize: isMobile ? '13px' : '14px',
               fontWeight: 500,
-              border: '1px solid var(--border-color)',
+                border: '1px solid var(--border-color)',
               background: 'transparent',
-              color: 'var(--text-primary)',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              width: '100%',
+                color: 'var(--text-primary)',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                width: '100%',
               transition: 'all 0.2s ease'
-            }}
+              }}
             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover-bg)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
@@ -324,9 +411,8 @@ export default function UserPage() {
             onClick={handleDeleteAccount}
             disabled={deleting}
             style={{
-              marginTop: '8px',
-              padding: '12px 24px',
-              fontSize: '14px',
+              padding: isMobile ? '10px 20px' : '12px 24px',
+              fontSize: isMobile ? '13px' : '14px',
               fontWeight: 500,
               border: '1px solid #f87171',
               background: 'transparent',
@@ -336,12 +422,12 @@ export default function UserPage() {
               width: '100%',
               transition: 'all 0.2s ease',
               opacity: deleting ? 0.6 : 1
-            }}
+              }}
             onMouseEnter={(e) => { if (!deleting) e.currentTarget.style.background = 'rgba(248, 113, 113, 0.1)'; }}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
+            >
             {deleting ? 'Deleting...' : 'Delete Account'}
-          </button>
+            </button>
         </div>
       </div>
 

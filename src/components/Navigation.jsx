@@ -137,6 +137,7 @@ const icons = {
 export default function Navigation({ onToggle, isCollapsed, navItems, isConnected, onLogout }) {
   const location = useLocation();
   const [isHovered, setIsHovered] = React.useState(false);
+  const [showComingSoon, setShowComingSoon] = useState(false);
   const isMobile = useIsMobile();
 
   const isActive = (path) => {
@@ -150,12 +151,13 @@ export default function Navigation({ onToggle, isCollapsed, navItems, isConnecte
   const shouldShowExpanded = isMobile ? true : (isCollapsed ? isHovered : true);
   const sidebarWidth = shouldShowExpanded ? '200px' : '60px';
 
-  // All items are main items now (no "more" section)
-  const mainItems = navItems;
+  // Filter items - main items vs coming soon items
+  const mainItems = navItems.filter(item => !item.comingSoon);
+  const comingSoonItems = navItems.filter(item => item.comingSoon);
 
   // Mobile bottom bar layout
   if (isMobile) {
-    const bottomBarItems = [...navItems, { id: 'user', label: 'Profile', path: '/user' }];
+    const bottomBarItems = [...navItems.filter(item => !item.desktopOnly && !item.comingSoon), { id: 'user', label: 'Profile', path: '/user' }];
 
     return (
       <nav 
@@ -164,27 +166,24 @@ export default function Navigation({ onToggle, isCollapsed, navItems, isConnecte
           bottom: 0,
           left: 0,
           right: 0,
-          height: '70px',
+          minHeight: '70px',
           background: 'var(--bg-primary)',
           borderTop: '1px solid var(--border-color)',
-          padding: '8px 4px',
+          paddingTop: '8px',
+          paddingBottom: `max(8px, env(safe-area-inset-bottom, 0px))`,
+          paddingLeft: 'env(safe-area-inset-left, 0px)',
+          paddingRight: 'env(safe-area-inset-right, 0px)',
           zIndex: 1000,
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: 'space-around',
-          overflowX: 'auto',
-          overflowY: 'hidden',
+          justifyContent: 'space-evenly',
+          overflow: 'hidden',
           boxShadow: '0 -2px 10px rgba(0,0,0,0.1)',
-          scrollbarWidth: 'none',
-          msOverflowStyle: 'none',
+          margin: 0,
+          boxSizing: 'border-box',
         }}
       >
-        <style>{`
-          nav::-webkit-scrollbar {
-            display: none;
-          }
-        `}</style>
         {bottomBarItems.map((item) => {
           const icon = icons[item.id] || icons.groupgrid;
           return (
@@ -197,14 +196,13 @@ export default function Navigation({ onToggle, isCollapsed, navItems, isConnecte
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '4px',
-                padding: '6px 8px',
+                padding: '6px 4px',
                 borderRadius: '8px',
                 textDecoration: 'none',
                 color: isActive(item.path) ? 'var(--accent-color)' : 'var(--text-secondary)',
                 background: isActive(item.path) ? 'var(--hover-bg)' : 'transparent',
                 transition: 'all 0.2s ease',
-                minWidth: '60px',
-                flex: '0 0 auto',
+                flex: 1,
               }}
             >
               <Icon size={20}>
@@ -276,41 +274,122 @@ export default function Navigation({ onToggle, isCollapsed, navItems, isConnecte
               <Link
                 key={item.id}
                 to={item.path}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: shouldShowExpanded ? 'flex-start' : 'center',
-                  gap: shouldShowExpanded ? '12px' : '0',
-                  padding: '12px',
-                  borderRadius: '8px',
-                  textDecoration: 'none',
-                  color: isActive(item.path) ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  background: isActive(item.path) ? 'var(--hover-bg)' : 'transparent',
-                  transition: 'all 0.2s ease',
-                  fontSize: '14px',
-                  fontWeight: isActive(item.path) ? 500 : 400,
-                  position: 'relative',
-                  width: shouldShowExpanded ? 'auto' : '100%',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive(item.path)) {
-                    e.currentTarget.style.background = 'var(--hover-bg)';
-                    e.currentTarget.style.color = 'var(--text-primary)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive(item.path)) {
-                    e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.color = 'var(--text-secondary)';
-                  }
-                }}
-              >
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: shouldShowExpanded ? 'flex-start' : 'center',
+              gap: shouldShowExpanded ? '12px' : '0',
+              padding: '12px',
+              borderRadius: '8px',
+              textDecoration: 'none',
+              color: isActive(item.path) ? 'var(--text-primary)' : 'var(--text-secondary)',
+              background: isActive(item.path) ? 'var(--hover-bg)' : 'transparent',
+              transition: 'all 0.2s ease',
+              fontSize: '14px',
+              fontWeight: isActive(item.path) ? 500 : 400,
+              position: 'relative',
+              width: shouldShowExpanded ? 'auto' : '100%',
+                  whiteSpace: 'nowrap',
+            }}
+            onMouseEnter={(e) => {
+              if (!isActive(item.path)) {
+                e.currentTarget.style.background = 'var(--hover-bg)';
+                e.currentTarget.style.color = 'var(--text-primary)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isActive(item.path)) {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--text-secondary)';
+              }
+            }}
+          >
                 <Icon size={20}>{icon}</Icon>
                 {shouldShowExpanded && <span>{item.label}</span>}
               </Link>
             );
           })}
 
+          {/* Coming Soon Dropdown - Desktop Only */}
+          {!isMobile && comingSoonItems.length > 0 && (
+            <div style={{ marginTop: '8px' }}>
+            <button
+                onClick={() => setShowComingSoon(!showComingSoon)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                  justifyContent: shouldShowExpanded ? 'space-between' : 'center',
+                gap: shouldShowExpanded ? '12px' : '0',
+                padding: '12px',
+                borderRadius: '8px',
+                border: 'none',
+                background: 'transparent',
+                  color: 'var(--text-tertiary)',
+                transition: 'all 0.2s ease',
+                fontSize: '14px',
+                fontWeight: 400,
+                  width: '100%',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--hover-bg)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                {shouldShowExpanded ? (
+                  <>
+                    <span>Coming Soon</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: showComingSoon ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s' }}>
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+                  </>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                  </svg>
+              )}
+            </button>
+
+              {showComingSoon && shouldShowExpanded && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px', paddingLeft: '8px' }}>
+                  {comingSoonItems.map((item) => {
+                const icon = icons[item.id] || icons.groupgrid;
+                return (
+                      <div
+                    key={item.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '10px 12px',
+                      borderRadius: '8px',
+                          color: 'var(--text-tertiary)',
+                          fontSize: '13px',
+                          opacity: 0.7,
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <Icon size={18}>{icon}</Icon>
+                          <span>{item.label}</span>
+                        </div>
+                      <span style={{
+                        fontSize: '9px',
+                        padding: '2px 6px',
+                        background: 'var(--hover-bg)',
+                        borderRadius: '4px',
+                          textTransform: 'uppercase',
+                        }}>Soon</span>
+                      </div>
+                );
+              })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* User Page Link - Bottom of sidebar (only show when NOT logged in) */}

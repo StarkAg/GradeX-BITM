@@ -140,6 +140,9 @@ export default function AuthPage({ onAuthSuccess }) {
       localStorage.setItem('gradex_username', data.username);
       localStorage.setItem('gradex_user_name', data.name || data.username);
       
+      // Clear view-only mode if set (normal login should allow editing)
+      localStorage.removeItem('gradex_view_only_mode');
+      
       window.dispatchEvent(new Event('storage'));
       onAuthSuccess(data);
     } catch (err) {

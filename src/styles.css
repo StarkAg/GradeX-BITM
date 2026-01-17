@@ -164,7 +164,7 @@
 /* CSS Variables for Dark Theme (Default) */
 :root[data-theme="dark"],
 :root:not([data-theme]) {
-  --bg-primary: #020202;
+  --bg-primary: #080808;
   --bg-secondary: #0a0a0a;
   --card-bg: rgba(10, 10, 10, 0.7);
   --card-bg-form: rgba(10, 10, 10, 0.6);
@@ -221,16 +221,27 @@ html {
 
 body {
   margin: 0;
+  padding: 0;
   font-family: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  background: var(--bg-primary);
+  background: 
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    var(--bg-primary);
+  background-size: 40px 40px, 40px 40px, 100% 100%;
+  background-attachment: fixed;
   color: var(--text-primary);
   min-height: 100vh;
-  min-height: 100dvh;
   overflow-x: hidden;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: color 0.3s ease;
+  -webkit-overflow-scrolling: touch;
   /* Hide scrollbars completely by default */
   scrollbar-width: none; /* Firefox - hide completely */
   -ms-overflow-style: none; /* IE and Edge */
+  /* Mobile optimizations */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: pan-y;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Hide scrollbars completely for webkit browsers */
@@ -241,10 +252,23 @@ body::-webkit-scrollbar {
   background: transparent;
 }
 
+/* Light theme grid */
+:root[data-theme="light"] body {
+  background: 
+    linear-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+    var(--bg-primary);
+  background-size: 40px 40px, 40px 40px, 100% 100%;
+  background-attachment: fixed;
+}
+
 html {
   scroll-behavior: smooth;
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE and Edge */
+  margin: 0;
+  padding: 0;
+  height: 100%;
 }
 
 html::-webkit-scrollbar {
@@ -256,6 +280,20 @@ html::-webkit-scrollbar {
 
 * {
   box-sizing: border-box;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Allow text selection for input fields and text areas */
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
 }
 
 /* Hide all scrollbars globally */
@@ -909,7 +947,7 @@ html::-webkit-scrollbar {
     padding: 8px 12px;
     height: auto;
     min-height: auto;
-    padding-bottom: 80px; /* Space for bottom navigation bar */
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); /* Space for bottom navigation bar */
   }
 
   body {
@@ -2214,6 +2252,34 @@ textarea:not([style*="transition"]):hover:not(:focus),
 .gradex-form select:hover:not(:focus) {
   border-color: var(--border-hover) !important;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Prevent iOS zoom on input focus - minimum 16px font-size */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="search"],
+input[type="tel"],
+input[type="url"],
+textarea,
+select {
+  font-size: 16px !important;
+}
+
+@media (min-width: 769px) {
+  /* Desktop can use smaller fonts */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  textarea,
+  select {
+    font-size: 14px !important;
+  }
 }
 
 /* Link Microinteractions */
