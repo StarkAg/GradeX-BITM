@@ -3,8 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { resolveSlotsToTimetable } from '../utils/slotResolver';
 import { getCourseColor, initializeColorAssignments } from '../utils/timetableColors';
 import { supabase } from '../lib/supabase';
-import { isMacMode, getServerMode } from '../lib/mode-toggle.js';
-import { API_ENDPOINTS } from '../lib/api-config';
 import './Timetable.css';
 import html2canvas from 'html2canvas';
 
@@ -282,13 +280,11 @@ export default function Timetable() {
   }
 
   /**
-   * Fetches timetable data from Go backend and renders HTML table
+   * Loads timetable from Supabase cache only (self-managed site, no external SRM/Go backend).
    */
   async function fetchTimetableFromSRM() {
-    const userEmail = localStorage.getItem('gradex_user_email');
     const userId = localStorage.getItem('gradex_user_id');
-    
-    if (!userEmail || !userId) {
+    if (!userId) {
       setError('Please log in to view your timetable');
       setNeedsLogin(true);
       return;
@@ -299,109 +295,32 @@ export default function Timetable() {
     setNeedsLogin(false);
 
     try {
-      // Fetch timetable JSON from Go backend
-      const timetableUrl = API_ENDPOINTS.timetable(userId);
-      
-      const timetableResponse = await fetch(timetableUrl, {
-        method: 'GET',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-      });
+      const { data: cacheData, error: cacheError } = await supabase
+        .from('timetable_cache')
+        .select('*')
+        .eq('user_id', userId)
+        .gt('expires_at', new Date().toISOString())
+        .maybeSingle();
 
-      if (!timetableResponse.ok) {
-        const errorData = await timetableResponse.json().catch(() => ({}));
-        if (errorData.requiresLogin) {
-          // Go backend not connected - try Supabase cache first
-          const userId = localStorage.getItem('gradex_user_id');
-          if (userId) {
-            try {
-              const { data: cacheData, error: cacheError } = await supabase
-                .from('timetable_cache')
-                .select('*')
-                .eq('user_id', userId)
-                .gt('expires_at', new Date().toISOString())
-                .maybeSingle();
-
-              if (!cacheError && cacheData && cacheData.raw_data) {
-                // Cache found - use cached data instead of showing login required
-                const cachedTimetable = cacheData.raw_data;
-                
-                // Extract student info from cached timetable
-                const rawStudentName = cachedTimetable.studentName || '';
-                const studentInfo = {
-                  Name: rawStudentName,
-                  'Academic Year': cachedTimetable.academicYear || '',
-                  'Combo / Batch': cachedTimetable.batch || '',
-                  'Batch': cachedTimetable.batch || '', // Also store as 'Batch' for direct format
-                  'RegNumber': cachedTimetable.regNumber || '',
-                };
-                setStudentInfo(studentInfo);
-                
-                // Convert courses from cached data
-                const coursesArray = cachedTimetable.courses || cachedTimetable.Courses || [];
-                if (Array.isArray(coursesArray) && coursesArray.length > 0) {
-                  const formattedCourses = coursesArray.map(course => ({
-                    courseCode: course.code || course.Code || '',
-                    courseName: course.title || course.Title || '',
-                    slotCode: course.slot || course.Slot || '',
-                    room: course.room || course.Room || '',
-                    category: course.category || course.Category || '',
-                    faculty: course.faculty || course.Faculty || '',
-                  }));
-                  setCourses(formattedCourses);
-                  initializeColorAssignments(formattedCourses);
-                  
-                  const batchNum = parseInt(cachedTimetable.batchNumber || cachedTimetable.batch_number || '1', 10);
-                  setSelectedBatch(batchNum);
-                  
-                  // Store in localStorage
-                  if (studentInfo && Object.keys(studentInfo).length > 0) {
-                    localStorage.setItem('timetable_student_info', JSON.stringify(studentInfo));
-                  }
-                }
-                
-                setNeedsLogin(false);
-                setError(null);
-                setFetching(false);
-                return; // Exit early - using cached data
-              }
-            } catch (cacheErr) {
-              // Ignore cache errors and fall back to login required
-            }
-          }
-          
-          // No cache - show login required
-          setNeedsLogin(true);
-          setError('Session expired. Please login again.');
-          throw new Error('Session expired. Please login again.');
-        }
-        throw new Error(errorData.error || `HTTP ${timetableResponse.status}: Failed to fetch timetable`);
+      if (cacheError || !cacheData?.raw_data) {
+        setNeedsLogin(false);
+        setError('No timetable data. Manage your schedule from the Schedule page.');
+        setFetching(false);
+        return;
       }
 
-      const timetableData = await timetableResponse.json();
-      
-      if (!timetableData.success || !timetableData.timetable) {
-        throw new Error('No timetable data found. Please check your SRM account.');
-      }
-
-      const timetable = timetableData.timetable;
-
-      // Extract student info from timetable data
-      // Ensure we use the actual student name from timetable, not email or user ID
-      const rawStudentName = timetable.studentName || '';
+      const cachedTimetable = cacheData.raw_data;
+      const rawStudentName = cachedTimetable.studentName || '';
       const studentInfo = {
-        Name: rawStudentName, // Store raw name, will be converted to proper case when displayed
-        'Academic Year': timetable.academicYear || '',
-        'Combo / Batch': timetable.batch || '',
-        'RegNumber': timetable.regNumber || '', // Store registration number from timetable
+        Name: rawStudentName,
+        'Academic Year': cachedTimetable.academicYear || '',
+        'Combo / Batch': cachedTimetable.batch || '',
+        'Batch': cachedTimetable.batch || '',
+        'RegNumber': cachedTimetable.regNumber || '',
       };
       setStudentInfo(studentInfo);
 
-      // Convert courses from Go backend format to frontend format
-      // Try both lowercase and uppercase field names (JSON should be lowercase, but check both)
-      const coursesArray = timetable.courses || timetable.Courses;
-      
+      const coursesArray = cachedTimetable.courses || cachedTimetable.Courses || [];
       if (Array.isArray(coursesArray) && coursesArray.length > 0) {
         const formattedCourses = coursesArray.map(course => ({
           courseCode: course.code || course.Code || '',
@@ -411,92 +330,26 @@ export default function Timetable() {
           category: course.category || course.Category || '',
           faculty: course.faculty || course.Faculty || '',
         }));
-
         setCourses(formattedCourses);
-
-        // Initialize color assignments in order of courses appearing in data
         initializeColorAssignments(formattedCourses);
-
-        // Extract batch number for slot resolution
-        // Try multiple field names to find batch number (backend returns batchNumber in camelCase)
-        const batchValue = timetable.batchNumber || timetable.batch_number || null;
-        
-        // Parse batch number - handle both string and number
-        let batchNum = 1; // Default fallback
-        if (batchValue !== null && batchValue !== undefined && batchValue !== '') {
-          if (typeof batchValue === 'string') {
-            const parsed = parseInt(batchValue, 10);
-            if (!isNaN(parsed) && parsed > 0) {
-              batchNum = parsed;
-            }
-          } else if (typeof batchValue === 'number' && batchValue > 0) {
-            batchNum = batchValue;
-          }
-        }
-        
+        const batchNum = parseInt(cachedTimetable.batchNumber || cachedTimetable.batch_number || '1', 10);
         setSelectedBatch(batchNum);
-      } else {
-        console.error('[Timetable] ERROR: No courses found in timetable data.');
-        console.error('[Timetable] Full timetable object:', timetable);
-        console.error('[Timetable] coursesArray:', coursesArray);
-        console.error('[Timetable] coursesArray type:', typeof coursesArray);
-        console.error('[Timetable] coursesArray is array?', Array.isArray(coursesArray));
-        
-        // More detailed error message
-        let errorMsg = 'No courses found in timetable data. ';
-        if (!coursesArray) {
-          errorMsg += 'The courses field is missing from the response. ';
-          errorMsg += 'Please rebuild and restart the Go backend to include the courses array.';
-        } else if (Array.isArray(coursesArray) && coursesArray.length === 0) {
-          errorMsg += 'The courses array is empty. ';
-          errorMsg += 'This might mean your SRM account has no timetable data, or the parsing failed.';
-        } else {
-          errorMsg += 'The courses field is not in the expected format.';
-        }
-        throw new Error(errorMsg);
       }
-      
-      // Store in localStorage
       if (studentInfo && Object.keys(studentInfo).length > 0) {
         localStorage.setItem('timetable_student_info', JSON.stringify(studentInfo));
-        window.dispatchEvent(new Event('timetableDataLoaded'));
       }
-
-      // Update user's name in Supabase users table if we have a student name
-      if (rawStudentName && userId) {
-        try {
-          await supabase
-            .from('users')
-            .update({ name: rawStudentName })
-            .eq('id', userId);
-        } catch (err) {
-          // Ignore name update errors in UI
-        }
-      }
-      
+      window.dispatchEvent(new Event('timetableDataLoaded'));
       setFetching(false);
     } catch (err) {
-      console.error('Error fetching timetable:', err);
+      console.error('Error loading timetable:', err);
       setFetching(false);
-      
-      // Check if it's a session/auth error
-      if (err.message.includes('login first') || 
-          err.message.includes('requiresLogin') || 
-          err.message.includes('Session expired') ||
-          err.message.includes('No valid session')) {
-        setNeedsLogin(true);
-        setError(err.message || 'Session expired. Please login again.');
-      } else {
-        // Other errors - show error but don't force login
-        setError(err.message || 'Failed to fetch timetable. Please try again or check your connection.');
-        setNeedsLogin(false); // Allow retry without forcing login
-      }
+      setError(err.message || 'Failed to load timetable.');
+      setNeedsLogin(false);
     }
   }
 
-  // Redirect to login page if needed
   const handleGoToLogin = () => {
-    navigate('/srm-login?showForm=true&redirect=/schedule');
+    navigate('/?redirect=/schedule');
   };
 
   /**

@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate, Routes, Route, Navigate, Link } from 'react-router-dom';
-// Vercel Analytics disabled for VPS deployment
-// import { Analytics } from '@vercel/analytics/react';
+import { Analytics } from '@vercel/analytics/react';
 import AdminPortal from './components/AdminPortal';
 const Admin954 = React.lazy(() => 
   import('./components/Admin954').catch(() => ({ default: () => null }))
@@ -553,8 +552,7 @@ export default function App() {
       </main>
       </div>
         <audio ref={audioRef} preload="none" onEnded={() => setIsPlaying(false)} />
-      {/* Vercel Analytics disabled for VPS deployment */}
-      {/* <Analytics /> */}
+      <Analytics />
 
         {/* Name Input Modal */}
         {showNameModal && (

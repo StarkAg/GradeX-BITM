@@ -128,37 +128,6 @@ async function loadRoutes() {
       await handleVercelRoute(logHandler, req, res);
     });
 
-    // VPS Proxy (combined login + timetable)
-    console.log('[Server] Loading vps-proxy API...');
-    const vpsProxyHandler = (await import('./api/vps-proxy.js')).default;
-    app.all('/api/vps-proxy', async (req, res) => {
-      await handleVercelRoute(vpsProxyHandler, req, res);
-    });
-    // Legacy routes (redirect to combined endpoint)
-    app.all('/api/vps-login-proxy', async (req, res) => {
-      req.query.action = 'login';
-      await handleVercelRoute(vpsProxyHandler, req, res);
-    });
-    app.all('/api/vps-timetable-proxy', async (req, res) => {
-      req.query.action = 'timetable';
-      await handleVercelRoute(vpsProxyHandler, req, res);
-    });
-
-    // NOTE: SRM endpoints have been moved to separate Go backend
-    // See: srm-backend/ directory
-    // 
-    // The Go backend handles:
-    // - POST /api/srm/login (Zoho authentication)
-    // - GET /api/srm/data (attendance, marks, courses, timetable)
-    // - GET /api/srm/calendar (academic calendar)
-    // - POST /api/srm/logout
-    //
-    // For local development, run the Go backend separately:
-    // cd srm-backend && make run
-    //
-    // For production, deploy the Go backend to VPS:
-    // cd srm-backend && make deploy
-
     // Timetable PDF Generation API
     console.log('[Server] Loading generate-timetable-pdf API...');
     const timetablePdfHandler = (await import('./api/generate-timetable-pdf.js')).default;
@@ -227,9 +196,6 @@ async function startServer() {
           '/api/student-data',
           '/api/admin',
           '/api/log',
-          '/api/vps-proxy',
-          '/api/vps-login-proxy',
-          '/api/vps-timetable-proxy',
           '/api/groupgrid',
           '/api/get-name-by-last-digits',
           '/api/generate-timetable-pdf',
@@ -239,10 +205,6 @@ async function startServer() {
     // For all other routes, serve the React app
     res.sendFile(join(__dirname, 'dist', 'index.html'));
   });
-
-  // NOTE: SRM attendance scraping has been moved to separate Go backend
-  // The scheduler is now part of the Go application
-  // See: srm-backend/README.md for details
 
   app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);

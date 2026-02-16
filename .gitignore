@@ -44,6 +44,6 @@ public/Sheets/
 downloads/
 .github/
 
-# Admin954 - Hidden from git (local and VPS only)
+# Admin954 - Hidden from git (local only)
 src/components/Admin954.jsx
 src/lib/admin954-config.js
