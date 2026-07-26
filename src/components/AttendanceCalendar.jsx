@@ -260,6 +260,11 @@ export default function AttendanceCalendar() {
            date.getFullYear() === today.getFullYear();
   };
 
+  // Session starts Monday 27/07/26 - dates before this have no real
+  // timetable/attendance data, so mark them red the same way weekends are.
+  const SESSION_START_DATE = new Date(2026, 6, 27);
+  const isBeforeSessionStart = (date) => date < SESSION_START_DATE;
+
   const isWeekend = (date) => {
     const day = date.getDay();
     return day === 0 || day === 6;
@@ -334,9 +339,10 @@ export default function AttendanceCalendar() {
             const dayStatus = getDayStatus(date);
             const today = isToday(date);
             const weekend = isWeekend(date);
+            const beforeSession = isBeforeSessionStart(date);
             const dayClasses = getClassesForDay(date.getDay());
             const hasClasses = dayClasses.length > 0;
-            
+
             return (
               <div
                 key={idx}
@@ -347,7 +353,7 @@ export default function AttendanceCalendar() {
                   padding: isMobile ? '4px 2px' : '8px 6px',
                   borderRight: (idx + 1) % 7 !== 0 ? '1px solid var(--border-color)' : 'none',
                   borderBottom: idx < 35 ? '1px solid var(--border-color)' : 'none',
-                  background: today ? (weekend ? 'rgba(74, 222, 128, 0.2)' : 'rgba(74, 222, 128, 0.15)') : (weekend ? 'rgba(248, 113, 113, 0.08)' : 'transparent'),
+                  background: today ? (weekend ? 'rgba(74, 222, 128, 0.2)' : 'rgba(74, 222, 128, 0.15)') : ((weekend || beforeSession) ? 'rgba(248, 113, 113, 0.08)' : 'transparent'),
                   opacity: isCurrentMonth ? 1 : 0.3,
                   cursor: isCurrentMonth ? 'pointer' : 'default',
                   transition: 'background 0.2s',
@@ -360,7 +366,7 @@ export default function AttendanceCalendar() {
                   overflow: 'hidden'
                 }}
               >
-                <div style={{ fontSize: isMobile ? '10px' : '20px', fontWeight: today ? 700 : 500, color: weekend ? '#f87171' : 'var(--text-primary)', marginBottom: isMobile ? '1px' : '2px' }}>
+                <div style={{ fontSize: isMobile ? '10px' : '20px', fontWeight: today ? 700 : 500, color: (weekend || beforeSession) ? '#f87171' : 'var(--text-primary)', marginBottom: isMobile ? '1px' : '2px' }}>
                   {date.getDate()}
                 </div>
                 
