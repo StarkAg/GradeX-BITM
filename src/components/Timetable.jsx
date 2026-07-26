@@ -26,10 +26,9 @@ function TimetableGrid({ subjects, timetable }) {
     <div className="timetable-container">
       <div className="timetable-header-logos">
         <img src="/GradeX.png" alt="GRADEX" className="timetable-logo-left" />
-        <img src="/Harsh.png" alt="BY STARK HARSH" className="timetable-logo-corner" />
       </div>
       <h2 className="timetable-title">Class Schedule</h2>
-      <div className="timetable-subtitle">W.E.F. 08/01/26 | BBA II A | BIT Mesra, Lalpur | LH-11</div>
+      <div className="timetable-subtitle">W.E.F. 27/07/26 | BBA III A | BIT Mesra, Lalpur | LH-11</div>
       <div className="timetable-grid">
         <div className="timetable-header-cell">Time</div>
         {TIME_SLOTS.map((slot) => (
