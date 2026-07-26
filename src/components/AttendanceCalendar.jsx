@@ -122,6 +122,7 @@ export default function AttendanceCalendar() {
   // Toggle attendance for a class on a specific date
   const toggleAttendance = async (date, subjectCode, newStatus) => {
     if (viewOnly) return; // Prevent edits in view-only mode
+    if (isBeforeSessionStart(date)) return; // No classes happened before the session started
     const dateStr = formatDateKey(date);
     
     // Update local state immediately for instant UI feedback
@@ -445,7 +446,7 @@ export default function AttendanceCalendar() {
                     }}
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {!viewOnly && (
+                    {!viewOnly && !beforeSession && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -500,7 +501,7 @@ export default function AttendanceCalendar() {
                         <span style={{ fontSize: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px' }}>All</span>
                       </button>
                     )}
-                    {!viewOnly && (
+                    {!viewOnly && !beforeSession && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -649,7 +650,12 @@ export default function AttendanceCalendar() {
                 </button>
               </div>
               {/* Full Day Buttons */}
-              {!viewOnly && (
+              {!viewOnly && isBeforeSessionStart(selectedDate) && (
+                <div style={{ padding: '8px 12px', background: 'rgba(248, 113, 113, 0.1)', borderRadius: '8px', fontSize: '12px', color: '#f87171' }}>
+                  Session hadn't started on this date - attendance can't be added here.
+                </div>
+              )}
+              {!viewOnly && !isBeforeSessionStart(selectedDate) && (
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button
                     onClick={() => {
@@ -726,7 +732,7 @@ export default function AttendanceCalendar() {
                             </h4>
                             <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: 0 }}>{cls.code} • {cls.room}</p>
                           </div>
-                          {!viewOnly && (
+                          {!viewOnly && !isBeforeSessionStart(selectedDate) && (
                             <div style={{ display: 'flex', gap: '8px' }}>
                               <button
                                 onClick={() => {
