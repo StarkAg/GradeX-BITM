@@ -577,7 +577,8 @@ export default function App() {
               fontSize: isMobile ? '8px' : '9px',
               lineHeight: isMobile ? '1.2' : '1',
             }}>
-              <span style={{ fontSize: isMobile ? '8px' : '9px', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap', lineHeight: '1' }}>BY STARK</span>
+              <span style={{ fontSize: isMobile ? '8px' : '9px', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap', lineHeight: '1' }}>BY</span>
+              <span style={{ fontSize: isMobile ? '8px' : '9px', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap', lineHeight: '1' }}>STARK</span>
             </div>
             <a href="https://github.com/StarkAg" target="_blank" rel="noopener noreferrer" onClick={() => logSocialClick('github')}
               style={{ width: isMobile ? '28px' : '32px', height: isMobile ? '28px' : '32px', padding: isMobile ? '4px' : '6px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-tertiary)', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', cursor: 'pointer', flexShrink: 0 }}
