@@ -195,11 +195,7 @@ export default function Subjects() {
       overflow: 'hidden' 
     }}>
       <div style={{ marginBottom: isMobile ? '12px' : '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', flexShrink: 0 }}>
-        <div>
-          <h1 style={{ fontSize: isMobile ? '20px' : '24px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 4px 0' }}>Subject Management</h1>
-          <p style={{ fontSize: isMobile ? '12px' : '14px', color: 'var(--text-secondary)', margin: 0 }}>{subjects.length} subjects • Shared across Timetable & Attendance</p>
-        </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>
           {!viewOnly && (
             <button onClick={handleReset} style={{ padding: isMobile ? '8px 12px' : '10px 16px', fontSize: isMobile ? '12px' : '13px', fontWeight: 500, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', borderRadius: '8px', cursor: 'pointer' }}>Reset</button>
           )}
@@ -242,10 +238,6 @@ export default function Subjects() {
           View Only Mode - Editing disabled (accessed via Admin Panel)
         </div>
       )}
-      <div style={{ padding: isMobile ? '10px 12px' : '12px 16px', background: 'var(--hover-bg)', border: '1px solid var(--border-color)', borderRadius: '8px', marginBottom: isMobile ? '12px' : '16px', fontSize: isMobile ? '11px' : '13px', color: 'var(--text-secondary)', flexShrink: 0 }}>
-        Subjects added here appear in both <strong style={{ color: 'var(--text-primary)' }}>Schedule</strong> and <strong style={{ color: 'var(--text-primary)' }}>Attendance</strong>.
-      </div>
-
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gridTemplateRows: isMobile ? 'auto' : 'repeat(5, 1fr)', gap: isMobile ? '10px' : '12px', flex: 1, overflow: 'hidden', minHeight: 0 }}>
         {subjects.map((subject, idx) => (
           <div key={subject.code} style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: isMobile ? '12px' : '16px', display: 'flex', alignItems: 'center', gap: isMobile ? '12px' : '12px', minHeight: 0 }}>
