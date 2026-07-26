@@ -194,32 +194,32 @@ export default function Subjects() {
       flexDirection: 'column', 
       overflow: 'hidden' 
     }}>
-      <div style={{ marginBottom: isMobile ? '12px' : '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', flexShrink: 0 }}>
-        <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>
-          {!viewOnly && (
-            <button onClick={handleReset} style={{ padding: isMobile ? '8px 12px' : '10px 16px', fontSize: isMobile ? '12px' : '13px', fontWeight: 500, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', borderRadius: '8px', cursor: 'pointer' }}>Reset</button>
-          )}
-          <button 
-            onClick={() => !viewOnly && setShowAddModal(true)} 
-            disabled={viewOnly}
-            style={{ 
-              padding: isMobile ? '8px 16px' : '10px 20px', 
-              fontSize: isMobile ? '12px' : '13px', 
-              fontWeight: 500, 
-              border: 'none', 
-              background: viewOnly ? 'var(--hover-bg)' : 'var(--text-primary)', 
-              color: viewOnly ? 'var(--text-secondary)' : 'var(--bg-primary)', 
-              borderRadius: '8px', 
-              cursor: viewOnly ? 'not-allowed' : 'pointer', 
-              opacity: viewOnly ? 0.5 : 1,
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '6px' 
-            }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Add Subject
-          </button>
-        </div>
+      <div style={{ marginBottom: isMobile ? '12px' : '16px', display: 'flex', gap: '8px', flexShrink: 0 }}>
+        {!viewOnly && (
+          <button onClick={handleReset} style={{ flex: 1, padding: isMobile ? '10px 12px' : '10px 16px', fontSize: isMobile ? '12px' : '13px', fontWeight: 500, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', borderRadius: '8px', cursor: 'pointer' }}>Reset</button>
+        )}
+        <button
+          onClick={() => !viewOnly && setShowAddModal(true)}
+          disabled={viewOnly}
+          style={{
+            flex: 1,
+            padding: isMobile ? '10px 16px' : '10px 20px',
+            fontSize: isMobile ? '12px' : '13px',
+            fontWeight: 500,
+            border: 'none',
+            background: viewOnly ? 'var(--hover-bg)' : 'var(--text-primary)',
+            color: viewOnly ? 'var(--text-secondary)' : 'var(--bg-primary)',
+            borderRadius: '8px',
+            cursor: viewOnly ? 'not-allowed' : 'pointer',
+            opacity: viewOnly ? 0.5 : 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px'
+          }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add Subject
+        </button>
       </div>
 
       {viewOnly && (
@@ -243,7 +243,7 @@ export default function Subjects() {
           <div key={subject.code} style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: isMobile ? '12px' : '16px', display: 'flex', alignItems: 'center', gap: isMobile ? '12px' : '12px', minHeight: 0 }}>
             <div style={{ width: isMobile ? '40px' : '50px', height: isMobile ? '40px' : '50px', borderRadius: '8px', background: getSubjectColor(idx), display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: isMobile ? '12px' : '16px', color: '#000', flexShrink: 0 }}>{subject.code}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <h3 style={{ fontSize: isMobile ? '14px' : '16px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 2px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subject.name}</h3>
+              <h3 style={{ fontSize: isMobile ? '14px' : '16px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 2px 0', lineHeight: 1.25, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{subject.name}</h3>
               <p style={{ fontSize: isMobile ? '12px' : '13px', color: 'var(--text-secondary)', margin: 0 }}>{subject.room}</p>
             </div>
             {!viewOnly && (
