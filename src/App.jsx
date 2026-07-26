@@ -3,6 +3,12 @@ import { useLocation, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth, useClerk, useUser } from '@clerk/clerk-react';
 import { useConvexAuth } from 'convex/react';
 import { Analytics } from '@vercel/analytics/react';
+import { APP_BUILD_DATE, APP_VERSION } from './version';
+import {
+  checkConvexAvailability,
+  publishConvexAvailability,
+  readConvexAvailability,
+} from './lib/convexAvailability';
 
 // The Clerk<->Convex JWT handshake (verifying the "convex" token template
 // against auth.config.ts) has real network latency - this doesn't shorten it,
@@ -40,6 +46,7 @@ import AttendanceCalendar from './components/AttendanceCalendar';
 import DemoLogin from './components/DemoLogin';
 import FacultyAttendancePanel from './components/FacultyAttendancePanel';
 import StudentDemoView from './components/StudentDemoView';
+import PWAUpdatePrompt from './components/PWAUpdatePrompt';
 import {
   useCurrentProfile,
   useLogSocialClick,
@@ -67,13 +74,87 @@ const NAV_ITEMS = [
   { id: 'faculty', label: 'Faculty', path: '/faculty', comingSoon: true, desktopOnly: true },
 ];
 const AUDIO_URL = '/back-in-black.mp3';
+const CONVEX_HEALTH_POLL_MS = 20 * 1000;
+const SPLASH_PROGRESS_INTERVAL_MS = 20;
+const SPLASH_PROGRESS_STEP = 4;
+const SPLASH_EXIT_DELAY_MS = 150;
+const SPLASH_TEXT_PAUSE_MS = 50;
+const SPLASH_TEXTS = ['INITIALIZING...'];
+
+function ConvexGate({ message, onLogout }) {
+  return (
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '24px',
+      background: 'var(--bg-primary)',
+      color: 'var(--text-primary)',
+    }}>
+      <div style={{
+        width: '100%',
+        maxWidth: '560px',
+        padding: '24px',
+        borderRadius: '16px',
+        border: '1px solid var(--border-color)',
+        background: 'var(--card-bg)',
+        boxShadow: '0 20px 50px rgba(0, 0, 0, 0.25)',
+      }}>
+        <h2 style={{ margin: '0 0 12px', fontSize: '1.3rem' }}>Convex Connection Required</h2>
+        <p style={{ margin: '0 0 12px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+          {message}
+        </p>
+        <p style={{ margin: '0 0 18px', lineHeight: 1.6, color: 'var(--text-tertiary)', fontSize: '12px' }}>
+          {APP_VERSION}{APP_BUILD_DATE ? ` • ${APP_BUILD_DATE.split('T')[0]}` : ''}
+        </p>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            style={{
+              padding: '10px 14px',
+              borderRadius: '10px',
+              border: '1px solid var(--border-color)',
+              background: 'var(--text-primary)',
+              color: 'var(--bg-primary)',
+              cursor: 'pointer',
+              fontWeight: 700,
+            }}
+          >
+            Reload
+          </button>
+          {onLogout && (
+            <button
+              type="button"
+              onClick={onLogout}
+              style={{
+                padding: '10px 14px',
+                borderRadius: '10px',
+                border: '1px solid var(--border-color)',
+                background: 'transparent',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                fontWeight: 700,
+              }}
+            >
+              Sign Out
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
   const { isAuthenticated: convexAuthenticated, isLoading: convexAuthLoading } = useConvexAuth();
   const { signOut } = useClerk();
   const { isLoaded: userLoaded, user } = useUser();
-  const currentProfile = useCurrentProfile(convexAuthenticated);
+  const [isConvexAvailable, setIsConvexAvailable] = useState(() => readConvexAvailability());
+  const [convexStatusChecked, setConvexStatusChecked] = useState(false);
+  const currentProfile = useCurrentProfile(convexAuthenticated && isConvexAvailable);
   const syncCurrentUser = useSyncCurrentUser();
   const updateCurrentProfile = useUpdateCurrentProfile();
   const logSocialClickMutation = useLogSocialClick();
@@ -100,6 +181,68 @@ export default function App() {
   const audioRef = useRef(null);
   const syncedUserRef = useRef(null);
   const location = useLocation();
+
+  useEffect(() => {
+    console.log(`%cGradeX BITM ${APP_VERSION}`, 'color: #3b82f6; font-weight: bold; font-size: 16px; padding: 4px;');
+    if (APP_BUILD_DATE) {
+      console.log(`%cBuild: ${APP_BUILD_DATE.split('T')[0]}`, 'color: #10b981; font-size: 12px;');
+    }
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+
+    const probeConvex = async () => {
+      if (disposed) return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        setIsConvexAvailable(false);
+        setConvexStatusChecked(true);
+        publishConvexAvailability(false);
+        return;
+      }
+
+      const available = await checkConvexAvailability({ timeoutMs: 3500 });
+      if (disposed) return;
+
+      setIsConvexAvailable(available);
+      setConvexStatusChecked(true);
+      publishConvexAvailability(available);
+    };
+
+    const handleOnline = () => {
+      setConvexStatusChecked(false);
+      void probeConvex();
+    };
+    const handleOffline = () => {
+      setIsConvexAvailable(false);
+      setConvexStatusChecked(true);
+      publishConvexAvailability(false);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void probeConvex();
+      }
+    };
+
+    void probeConvex();
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void probeConvex();
+      }
+    }, CONVEX_HEALTH_POLL_MS);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
 
   // Detect mobile devices
   useEffect(() => {
@@ -254,22 +397,23 @@ export default function App() {
 
   // Splash screen animation
   useEffect(() => {
-    const texts = ['INITIALIZING...', 'LOADING SYSTEMS...', 'GRADEX ONLINE'];
     let textIndex = 0;
     let charIndex = 0;
     let progressInterval;
     let textInterval;
+    let textPauseTimeout;
 
     textInterval = setInterval(() => {
-      if (charIndex < texts[textIndex].length) {
-        setLoadingText(texts[textIndex].substring(0, charIndex + 1));
+      if (charIndex < SPLASH_TEXTS[textIndex].length) {
+        setLoadingText(SPLASH_TEXTS[textIndex].substring(0, charIndex + 1));
         charIndex++;
       } else {
-        setTimeout(() => {
+        window.clearTimeout(textPauseTimeout);
+        textPauseTimeout = window.setTimeout(() => {
           charIndex = 0;
-          textIndex = (textIndex + 1) % texts.length;
+          textIndex = (textIndex + 1) % SPLASH_TEXTS.length;
           setLoadingText('');
-        }, 800);
+        }, SPLASH_TEXT_PAUSE_MS);
       }
     }, 100);
 
@@ -278,16 +422,18 @@ export default function App() {
         if (prev >= 100) {
           clearInterval(progressInterval);
           clearInterval(textInterval);
-          setTimeout(() => setShowSplash(false), 300);
+          window.clearTimeout(textPauseTimeout);
+          setTimeout(() => setShowSplash(false), SPLASH_EXIT_DELAY_MS);
           return 100;
         }
-        return prev + 4;
+        return prev + SPLASH_PROGRESS_STEP;
       });
-    }, 40);
+    }, SPLASH_PROGRESS_INTERVAL_MS);
 
     return () => {
       clearInterval(progressInterval);
       clearInterval(textInterval);
+      window.clearTimeout(textPauseTimeout);
     };
   }, []);
 
@@ -431,75 +577,33 @@ export default function App() {
     return <AuthRedirectCallback />;
   }
 
-  if (convexAuthLoading && isSignedIn) {
-    return <AuthHandshakeSpinner label="Connecting your account..." />;
-  }
-
   if (!isSignedIn) {
     return <AuthPage onAuthSuccess={handleAuthSuccess} />;
   }
 
+  if (!convexStatusChecked) {
+    return <AuthHandshakeSpinner label="Checking Convex..." />;
+  }
+
+  if (!isConvexAvailable) {
+    return (
+      <ConvexGate
+        message="Convex is unreachable right now, so GradeX BITM is holding the app before any student data is opened. Check your connection or Convex deployment, then reload."
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  if (convexAuthLoading) {
+    return <AuthHandshakeSpinner label="Connecting your account..." />;
+  }
+
   if (!convexAuthenticated) {
     return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '24px',
-        background: 'var(--bg-primary)',
-        color: 'var(--text-primary)',
-      }}>
-        <div style={{
-          width: '100%',
-          maxWidth: '560px',
-          padding: '24px',
-          borderRadius: '16px',
-          border: '1px solid var(--border-color)',
-          background: 'var(--card-bg)',
-          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.25)',
-        }}>
-          <h2 style={{ margin: '0 0 12px', fontSize: '1.3rem' }}>Convex Connection Required</h2>
-          <p style={{ margin: '0 0 12px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
-            Clerk sign-in completed, but Convex has not accepted the session yet. The app now waits for real Convex auth before opening your data.
-          </p>
-          <p style={{ margin: '0 0 18px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
-            {convexConfigError || 'Set up the Clerk Convex integration for this Clerk app and enable the `convex` token template, then reload.'}
-          </p>
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              style={{
-                padding: '10px 14px',
-                borderRadius: '10px',
-                border: '1px solid var(--border-color)',
-                background: 'var(--text-primary)',
-                color: 'var(--bg-primary)',
-                cursor: 'pointer',
-                fontWeight: 700,
-              }}
-            >
-              Reload
-            </button>
-            <button
-              type="button"
-              onClick={handleLogout}
-              style={{
-                padding: '10px 14px',
-                borderRadius: '10px',
-                border: '1px solid var(--border-color)',
-                background: 'transparent',
-                color: 'var(--text-primary)',
-                cursor: 'pointer',
-                fontWeight: 700,
-              }}
-            >
-              Sign Out
-            </button>
-          </div>
-        </div>
-      </div>
+      <ConvexGate
+        message={convexConfigError || 'Clerk sign-in completed, but Convex has not accepted the session yet. Activate the Clerk Convex integration and the `convex` token template in Clerk Dashboard, then reload.'}
+        onLogout={handleLogout}
+      />
     );
   }
 
@@ -694,6 +798,7 @@ export default function App() {
       </div>
         <audio ref={audioRef} preload="none" onEnded={() => setIsPlaying(false)} />
       <Analytics />
+      <PWAUpdatePrompt />
 
         {/* Name Input Modal */}
         {showNameModal && (
