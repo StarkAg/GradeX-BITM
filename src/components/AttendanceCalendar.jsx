@@ -122,7 +122,7 @@ export default function AttendanceCalendar() {
   // Toggle attendance for a class on a specific date
   const toggleAttendance = async (date, subjectCode, newStatus) => {
     if (viewOnly) return; // Prevent edits in view-only mode
-    if (isBeforeSessionStart(date)) return; // No classes happened before the session started
+    if (cannotMarkAttendance(date)) return; // No classes happened before session start or in the future
     const dateStr = formatDateKey(date);
     
     // Update local state immediately for instant UI feedback
@@ -266,6 +266,21 @@ export default function AttendanceCalendar() {
   const SESSION_START_DATE = new Date(2026, 6, 27);
   const isBeforeSessionStart = (date) => date < SESSION_START_DATE;
 
+  // A class in the future hasn't happened yet, so it can't be marked present
+  // or absent. Compared at midnight so "today" itself is always markable.
+  const isFutureDate = (date) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d > today;
+  };
+
+  // Single source of truth for "can this date have attendance marked" -
+  // covers both the pre-session guard and the future-date guard everywhere
+  // (the write itself, the dots, and every mark-attendance control).
+  const cannotMarkAttendance = (date) => isBeforeSessionStart(date) || isFutureDate(date);
+
   const isWeekend = (date) => {
     const day = date.getDay();
     return day === 0 || day === 6;
@@ -340,7 +355,8 @@ export default function AttendanceCalendar() {
             const dayStatus = getDayStatus(date);
             const today = isToday(date);
             const weekend = isWeekend(date);
-            const beforeSession = isBeforeSessionStart(date);
+            const beforeSession = isBeforeSessionStart(date); // red styling only - future dates aren't red, just unmarkable
+            const cannotMark = cannotMarkAttendance(date);
             const dayClasses = getClassesForDay(date.getDay());
             const hasClasses = dayClasses.length > 0;
 
@@ -371,7 +387,7 @@ export default function AttendanceCalendar() {
                   {date.getDate()}
                 </div>
                 
-                {dayStatus && dayStatus.total > 0 && (
+                {dayStatus && dayStatus.total > 0 && !beforeSession && (
                   <div style={{ display: 'flex', gap: isMobile ? '2px' : '3px', flexWrap: 'wrap', justifyContent: 'center', maxWidth: '100%' }}>
                     {/* Show green dots for present hours */}
                     {Array.from({ length: dayStatus.present }).map((_, idx) => (
@@ -446,7 +462,7 @@ export default function AttendanceCalendar() {
                     }}
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {!viewOnly && !beforeSession && (
+                    {!viewOnly && !cannotMark && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -501,7 +517,7 @@ export default function AttendanceCalendar() {
                         <span style={{ fontSize: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px' }}>All</span>
                       </button>
                     )}
-                    {!viewOnly && !beforeSession && (
+                    {!viewOnly && !cannotMark && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -655,7 +671,12 @@ export default function AttendanceCalendar() {
                   Session hadn't started on this date - attendance can't be added here.
                 </div>
               )}
-              {!viewOnly && !isBeforeSessionStart(selectedDate) && (
+              {!viewOnly && !isBeforeSessionStart(selectedDate) && isFutureDate(selectedDate) && (
+                <div style={{ padding: '8px 12px', background: 'var(--hover-bg)', borderRadius: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  This class hasn't happened yet - attendance can be marked once it's over.
+                </div>
+              )}
+              {!viewOnly && !cannotMarkAttendance(selectedDate) && (
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button
                     onClick={() => {
@@ -732,7 +753,7 @@ export default function AttendanceCalendar() {
                             </h4>
                             <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: 0 }}>{cls.code} • {cls.room}</p>
                           </div>
-                          {!viewOnly && !isBeforeSessionStart(selectedDate) && (
+                          {!viewOnly && !cannotMarkAttendance(selectedDate) && (
                             <div style={{ display: 'flex', gap: '8px' }}>
                               <button
                                 onClick={() => {
