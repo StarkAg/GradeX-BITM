@@ -3,8 +3,17 @@ import { useLocation, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth, useClerk, useUser } from '@clerk/clerk-react';
 import { useConvexAuth } from 'convex/react';
 import { Analytics } from '@vercel/analytics/react';
-const Admin954 = React.lazy(() => 
-  import('./components/Admin954').catch(() => ({ default: () => null }))
+// Admin954 is gitignored (local-only, hidden admin panel) - it never exists in
+// the GitHub-cloned tree Vercel builds from. A literal import path gets resolved
+// by Rollup at build time regardless of `@vite-ignore` (that comment only quiets
+// Vite's dev-server warning), which fails the whole build on any machine
+// without this file on disk. Building the path from a variable stops Rollup
+// from attempting build-time resolution at all - it becomes a genuine runtime
+// import, which resolves normally wherever the file is present, and the
+// existing .catch() already handles it being absent everywhere else.
+const ADMIN954_MODULE = './components/Admin954';
+const Admin954 = React.lazy(() =>
+  import(/* @vite-ignore */ ADMIN954_MODULE).catch(() => ({ default: () => null }))
 );
 import Timetable from './components/Timetable';
 import Navigation from './components/Navigation';
