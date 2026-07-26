@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import html2canvas from 'html2canvas';
 import { Link } from 'react-router-dom';
-import { getSubjects, getSubjectColor, getDayColor } from '../lib/subjects';
+import { useAcademicSnapshot, useCurrentProfile } from '../lib/academic-data';
+import { DEFAULT_TIMETABLE, getSubjectColor, getDayColor } from '../lib/subjects';
 import './Timetable.css';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -16,26 +17,6 @@ const TIME_SLOTS = [
   { period: 8, time: '3:30 - 4:20' },
   { period: 9, time: '5:30 - 6:20' },
 ];
-
-// Default timetable structure (9 slots per day)
-const DEFAULT_TIMETABLE = {
-  'Monday': [
-    { code: 'OB' }, { code: 'MM' }, { code: 'BE' }, { code: 'EI' }, { code: 'QDA', room: 'LH-02' }, null, null, null, null
-  ],
-  'Tuesday': [
-    { code: 'WAB', room: 'LAB IIIB', isLab: true }, { code: 'WAB', room: 'LAB IIIB', isLab: true },
-    { code: 'BE' }, { code: 'PSCW', room: 'Lab', isLab: true }, { code: 'PSCW', room: 'LH-02', isLab: true }, null, null, null, null
-  ],
-  'Wednesday': [
-    { code: 'EI' }, { code: 'OB' }, { code: 'BE' }, { code: 'MM' }, { code: 'MM', room: 'LH-02' }, null, null, null, null
-  ],
-  'Thursday': [
-    { code: 'QDA' }, { code: 'QDA', room: 'LAB IIIB', isLab: true }, { code: 'PSCW' }, { code: 'OB' }, null, null, null, null, null
-  ],
-  'Friday': [
-    { code: 'WAB' }, { code: 'MM' }, { code: 'WAB' }, { code: 'QDA' }, null, null, null, null, null
-  ],
-};
 
 function TimetableGrid({ subjects, timetable }) {
   const subjectMap = {};
@@ -85,21 +66,22 @@ function TimetableGrid({ subjects, timetable }) {
 }
 
 export default function Timetable() {
+  const snapshot = useAcademicSnapshot();
+  const profile = useCurrentProfile();
   const [subjects, setSubjects] = useState([]);
-  const [timetable, setTimetable] = useState(() => {
-    const saved = localStorage.getItem('gradex_timetable');
-    return saved ? JSON.parse(saved) : DEFAULT_TIMETABLE;
-  });
+  const [timetable, setTimetable] = useState(DEFAULT_TIMETABLE);
   const [isMobile, setIsMobile] = useState(false);
   const [loading, setLoading] = useState(false);
   const timetableRef = useRef(null);
 
   useEffect(() => {
-    setSubjects(getSubjects());
-    const handleUpdate = () => setSubjects(getSubjects());
-    window.addEventListener('subjectsUpdated', handleUpdate);
-    return () => window.removeEventListener('subjectsUpdated', handleUpdate);
-  }, []);
+    if (!snapshot) return;
+    setSubjects(snapshot.subjects || []);
+    setTimetable({
+      ...DEFAULT_TIMETABLE,
+      ...(snapshot.timetable || {}),
+    });
+  }, [snapshot]);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth <= 768);
@@ -107,10 +89,6 @@ export default function Timetable() {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem('gradex_timetable', JSON.stringify(timetable));
-  }, [timetable]);
 
   // Lock scroll on Schedule page (mobile and desktop)
   useEffect(() => {
@@ -180,11 +158,11 @@ export default function Timetable() {
         timetableElement.style[key] = origStyles[key] || '';
       });
 
-      const blob = await (await fetch(canvas.toDataURL('image/jpeg', 0.95))).blob();
+        const blob = await (await fetch(canvas.toDataURL('image/jpeg', 0.95))).blob();
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-      link.download = `TimeTable_${localStorage.getItem('gradex_user_name') || 'BBA_IIA'}.jpg`;
+      link.download = `TimeTable_${profile?.name || profile?.username || 'BBA_IIA'}.jpg`;
         link.click();
       setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch (err) {

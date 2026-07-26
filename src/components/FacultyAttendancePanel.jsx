@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
 import { DEFAULT_SUBJECTS } from '../lib/subjects';
+import { useDemoSubjectCatalog, useSetFacultyAttendance } from '../lib/academic-data';
 
 // Demo students data
 const DEMO_STUDENTS = [
@@ -31,6 +31,8 @@ const DEMO_CLASSROOMS = [
 
 export default function FacultyAttendancePanel() {
   const navigate = useNavigate();
+  const subjectCatalog = useDemoSubjectCatalog();
+  const setFacultyAttendance = useSetFacultyAttendance();
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [selectedClassroom, setSelectedClassroom] = useState(null);
   const [selectedSubject, setSelectedSubject] = useState(null);
@@ -50,48 +52,10 @@ export default function FacultyAttendancePanel() {
   }, []);
 
   useEffect(() => {
-    loadSubjects();
-  }, []);
-
-  const loadSubjects = async () => {
-    setLoading(true);
-    try {
-      // Try to load subjects from Supabase (from any user's subjects)
-      const { data, error } = await supabase
-        .from('user_subjects')
-        .select('subject_name, subject_code, room')
-        .order('created_at', { ascending: true })
-        .limit(20);
-
-      if (error) throw error;
-
-      if (data && data.length > 0) {
-        const uniqueSubjects = [];
-        const seen = new Set();
-        data.forEach(s => {
-          const key = s.subject_code;
-          if (!seen.has(key)) {
-            seen.add(key);
-            uniqueSubjects.push({
-              name: s.subject_name,
-              code: s.subject_code,
-              room: s.room || 'LH-11'
-            });
-          }
-        });
-        setSubjects(uniqueSubjects);
-      } else {
-        // Use default subjects if no data in Supabase
-        setSubjects(DEFAULT_SUBJECTS);
-      }
-    } catch (err) {
-      console.error('Error loading subjects:', err);
-      // Fallback to default subjects
-      setSubjects(DEFAULT_SUBJECTS);
-    } finally {
-      setLoading(false);
-    }
-  };
+    if (!subjectCatalog) return;
+    setSubjects(subjectCatalog.length ? subjectCatalog : DEFAULT_SUBJECTS);
+    setLoading(false);
+  }, [subjectCatalog]);
 
   const handleClassroomSelect = (classroom) => {
     setSelectedClassroom(classroom);
@@ -114,7 +78,7 @@ export default function FacultyAttendancePanel() {
     }
   };
 
-  const saveAttendanceToSupabase = async (studentId, status, date, subjectCode) => {
+  const saveAttendance = async (studentId, status, date, subjectCode) => {
     if (!subjectCode) return;
     
     const saveKey = `${date}-${studentId}`;
@@ -123,38 +87,15 @@ export default function FacultyAttendancePanel() {
     try {
       const facultyId = localStorage.getItem('demo_user_id') || 'demo_faculty_001';
       const student = DEMO_STUDENTS.find(s => s.id === studentId);
-      
-      if (status === null) {
-        // Remove attendance record (unmark)
-        await supabase
-          .from('faculty_attendance')
-          .delete()
-          .eq('faculty_id', facultyId)
-          .eq('student_id', studentId)
-          .eq('date', date)
-          .eq('subject_code', subjectCode);
-      } else {
-        // Upsert attendance record
-        const statusText = status === true ? 'present' : 'absent';
-        const { error } = await supabase
-          .from('faculty_attendance')
-          .upsert({
-            faculty_id: facultyId,
-            student_id: studentId,
-            student_name: student?.name || '',
-            date: date,
-            subject_code: subjectCode,
-            status: statusText,
-            classroom: selectedClassroom?.name || ''
-          }, {
-            onConflict: 'faculty_id,student_id,date,subject_code'
-          });
-
-        if (error) throw error;
-      }
-
-      // Ensure immediate sync by waiting for the operation to complete
-      // The database will update immediately, triggering real-time subscriptions
+      await setFacultyAttendance({
+        facultyId,
+        studentId,
+        studentName: student?.name || '',
+        date,
+        subjectCode,
+        classroom: selectedClassroom?.name || '',
+        status: status === null ? null : status === true ? 'present' : 'absent',
+      });
       
       // Show success toast
       setSaveToast({
@@ -200,7 +141,7 @@ export default function FacultyAttendancePanel() {
     });
 
     // Save to Supabase asynchronously
-    await saveAttendanceToSupabase(studentId, newStatus, dateKey, selectedSubject.code);
+    await saveAttendance(studentId, newStatus, dateKey, selectedSubject.code);
   };
 
   const getAttendanceStats = () => {

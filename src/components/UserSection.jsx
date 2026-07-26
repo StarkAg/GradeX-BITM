@@ -1,26 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { useUser } from '@clerk/clerk-react';
+import {
+  useCurrentProfile,
+  useDeleteCurrentUserData,
+  useUpdateCurrentProfile,
+} from '../lib/academic-data';
 import ConfirmModal from './ConfirmModal';
+import { getClerkUsername, splitDisplayName } from '../lib/clerk';
 
 export default function UserSection({ isCollapsed, onLogout }) {
-  const [userData, setUserData] = useState(null);
+  const { user } = useUser();
+  const userData = useCurrentProfile();
+  const updateCurrentProfile = useUpdateCurrentProfile();
+  const deleteCurrentUserData = useDeleteCurrentUserData();
   const [showModal, setShowModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, inputValue: '' });
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [savingName, setSavingName] = useState(false);
-
-  useEffect(() => {
-    loadUserData();
-    
-    const handleStorageChange = () => {
-        loadUserData();
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
 
   useEffect(() => {
     if (showModal) {
@@ -36,35 +34,30 @@ export default function UserSection({ isCollapsed, onLogout }) {
     }
   }, [showModal]);
 
-  function loadUserData() {
-      const userId = localStorage.getItem('gradex_user_id');
-    const username = localStorage.getItem('gradex_username');
-    const name = localStorage.getItem('gradex_user_name');
-
-    if (userId && username) {
-      setUserData({
-        id: userId,
-        name: name || username,
-        username: username
-      });
-    }
-  }
-
   const handleSaveName = async () => {
-    const userId = localStorage.getItem('gradex_user_id');
-    if (!nameInput.trim() || !userId || savingName) return;
+    if (!nameInput.trim() || !user || savingName) return;
     
     setSavingName(true);
     try {
-      await supabase
-        .from('users')
-        .update({ name: nameInput.trim() })
-        .eq('id', userId);
-      
-      localStorage.setItem('gradex_user_name', nameInput.trim());
-      setUserData(prev => ({ ...prev, name: nameInput.trim() }));
+      const trimmedName = nameInput.trim();
+      const { firstName, lastName } = splitDisplayName(trimmedName);
+      const updatedUser = await user.update({
+        firstName,
+        lastName,
+        unsafeMetadata: {
+          ...(user.unsafeMetadata || {}),
+          displayName: trimmedName,
+        },
+      });
+      await updateCurrentProfile({
+        name: trimmedName,
+        username: getClerkUsername(updatedUser),
+        firstName,
+        lastName,
+        imageUrl: updatedUser.imageUrl || undefined,
+        email: updatedUser.primaryEmailAddress?.emailAddress || undefined,
+      });
       setEditingName(false);
-      window.dispatchEvent(new Event('storage'));
     } catch (err) {
       console.error('Error saving name:', err);
     } finally {
@@ -77,19 +70,14 @@ export default function UserSection({ isCollapsed, onLogout }) {
   };
 
   const confirmDeleteAccount = async () => {
-    const userId = localStorage.getItem('gradex_user_id');
-    if (!userId) return;
+    if (!user) return;
 
     setDeleting(true);
     setDeleteConfirm({ open: false, inputValue: '' });
     setShowModal(false);
     try {
-      // Delete all user data immediately - await each to ensure completion
-      await supabase.from('daily_attendance').delete().eq('user_id', userId);
-      await supabase.from('manual_attendance').delete().eq('user_id', userId);
-      await supabase.from('user_subjects').delete().eq('user_id', userId);
-      await supabase.from('users').delete().eq('id', userId);
-      localStorage.clear();
+      await deleteCurrentUserData({});
+      await user.delete();
       window.location.reload();
     } catch (err) {
       console.error('Error deleting account:', err);

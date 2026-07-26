@@ -5,13 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:convex": "convex dev",
     "server": "nodemon server.js",
     "server:once": "node server.js",
-    "dev:all": "concurrently \"npm run server\" \"npm run dev\"",
+    "dev:all": "concurrently \"npm run dev:convex\" \"npm run dev\"",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@clerk/clerk-react": "^5.61.4",
     "@supabase/supabase-js": "^2.81.1",
     "@upstash/redis": "^1.35.6",
     "@vercel/analytics": "^1.5.0",
@@ -19,6 +21,7 @@
     "axios": "^1.13.2",
     "axios-cookiejar-support": "^4.0.7",
     "cheerio": "^1.1.2",
+    "convex": "^1.34.1",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "html2canvas": "^1.4.1",

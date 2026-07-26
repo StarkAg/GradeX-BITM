@@ -1,14 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { useClerk, useUser } from '@clerk/clerk-react';
+import {
+  useCurrentProfile,
+  useDeleteCurrentUserData,
+  useUpdateCurrentProfile,
+} from '../lib/academic-data';
 import ConfirmModal from './ConfirmModal';
+import {
+  clearLocalAuthCache,
+  getClerkUsername,
+  splitDisplayName,
+} from '../lib/clerk';
 
 /**
  * UserPage - Profile page for logged-in users
  */
 
 export default function UserPage() {
-  const [userData, setUserData] = useState(null);
+  const { signOut } = useClerk();
+  const { isLoaded, isSignedIn, user } = useUser();
+  const profile = useCurrentProfile(isSignedIn);
+  const updateCurrentProfile = useUpdateCurrentProfile();
+  const deleteCurrentUserData = useDeleteCurrentUserData();
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, inputValue: '' });
@@ -16,11 +29,17 @@ export default function UserPage() {
   const [nameInput, setNameInput] = useState('');
   const [savingName, setSavingName] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  const navigate = useNavigate();
 
   useEffect(() => {
-    loadUserData();
-  }, []);
+    if (!isLoaded) return;
+
+    if (!isSignedIn || !user) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(false);
+  }, [isLoaded, isSignedIn, user]);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth <= 768);
@@ -54,65 +73,40 @@ export default function UserPage() {
     }
   }, [isMobile]);
 
-  const loadUserData = async () => {
-      const userId = localStorage.getItem('gradex_user_id');
-    const username = localStorage.getItem('gradex_username');
-    const name = localStorage.getItem('gradex_user_name');
-
-    if (!userId) {
-        setLoading(false);
-        return;
-      }
-
+  const handleLogout = async () => {
     try {
-      // Get user data
-      const { data: user } = await supabase
-        .from('users')
-        .select('id, username, name, created_at')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (user) {
-        setUserData({
-          id: user.id,
-          username: user.username || username,
-          name: user.name || name || username
-        });
-      }
-
+      await signOut();
     } catch (err) {
-      console.error('Error loading user:', err);
+      console.error('Error signing out:', err);
     } finally {
-      setLoading(false);
+      clearLocalAuthCache(true);
+      window.location.reload();
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('gradex_user_id');
-    localStorage.removeItem('gradex_username');
-    localStorage.removeItem('gradex_user_name');
-    localStorage.removeItem('gradex_user_email');
-    localStorage.removeItem('gradex-attendance');
-    localStorage.removeItem('gradex-courses');
-    localStorage.removeItem('gradex_subjects');
-    localStorage.removeItem('gradex_timetable');
-    
-    window.dispatchEvent(new Event('storage'));
-    window.location.reload();
-  };
-
   const handleSaveName = async () => {
-    if (!nameInput.trim() || !userData?.id || savingName) return;
-    
+    if (!nameInput.trim() || !user || savingName) return;
+
     setSavingName(true);
     try {
-      await supabase
-        .from('users')
-        .update({ name: nameInput.trim() })
-        .eq('id', userData.id);
-      
-      localStorage.setItem('gradex_user_name', nameInput.trim());
-      setUserData(prev => ({ ...prev, name: nameInput.trim() }));
+      const trimmedName = nameInput.trim();
+      const { firstName, lastName } = splitDisplayName(trimmedName);
+      const updatedUser = await user.update({
+        firstName,
+        lastName,
+        unsafeMetadata: {
+          ...(user.unsafeMetadata || {}),
+          displayName: trimmedName,
+        },
+      });
+      await updateCurrentProfile({
+        name: trimmedName,
+        username: getClerkUsername(updatedUser),
+        firstName,
+        lastName,
+        imageUrl: updatedUser.imageUrl || undefined,
+        email: updatedUser.primaryEmailAddress?.emailAddress || undefined,
+      });
       setEditingName(false);
     } catch (err) {
       console.error('Error saving name:', err);
@@ -126,18 +120,17 @@ export default function UserPage() {
   };
 
   const confirmDeleteAccount = async () => {
-    const userId = localStorage.getItem('gradex_user_id');
+    const userId = user?.id;
     if (!userId) return;
 
     setDeleting(true);
     setDeleteConfirm({ open: false, inputValue: '' });
     try {
-      // Delete all user data immediately - await each to ensure completion
-      await supabase.from('daily_attendance').delete().eq('user_id', userId);
-      await supabase.from('manual_attendance').delete().eq('user_id', userId);
-      await supabase.from('user_subjects').delete().eq('user_id', userId);
-      await supabase.from('users').delete().eq('id', userId);
-      localStorage.clear();
+      await deleteCurrentUserData({});
+      if (user) {
+        await user.delete();
+      }
+      clearLocalAuthCache(true);
       window.location.reload();
     } catch (err) {
       console.error('Error deleting account:', err);
@@ -167,7 +160,7 @@ export default function UserPage() {
     );
   }
 
-  if (!userData) {
+  if (!profile) {
     return (
       <div style={{
         maxWidth: '400px',
@@ -237,7 +230,7 @@ export default function UserPage() {
             fontWeight: 600,
             color: 'var(--bg-primary)',
           }}>
-            {(userData.name || userData.username || 'U').charAt(0).toUpperCase()}
+            {(profile?.name || profile?.username || 'U').charAt(0).toUpperCase()}
           </div>
 
           {/* Name & Username */}
@@ -253,7 +246,7 @@ export default function UserPage() {
                       if (e.key === 'Enter') handleSaveName();
                       if (e.key === 'Escape') {
                         setEditingName(false);
-                        setNameInput(userData.name || userData.username);
+                        setNameInput(profile?.name || profile?.username || '');
                       }
                     }}
                     autoFocus
@@ -291,7 +284,7 @@ export default function UserPage() {
                   <button
                     onClick={() => {
                       setEditingName(false);
-                      setNameInput(userData.name || userData.username);
+                      setNameInput(profile?.name || profile?.username || '');
                     }}
                     style={{
                       padding: '8px',
@@ -316,11 +309,11 @@ export default function UserPage() {
                     margin: 0,
               color: 'var(--text-primary)',
             }}>
-                    {userData.name || userData.username}
+                    {profile?.name || profile?.username}
             </h1>
                   <button
                     onClick={() => {
-                      setNameInput(userData.name || userData.username);
+                      setNameInput(profile?.name || profile?.username || '');
                       setEditingName(true);
                     }}
                     style={{
@@ -355,7 +348,7 @@ export default function UserPage() {
               color: 'var(--text-secondary)',
               margin: 0,
             }}>
-              @{userData.username}
+              @{profile?.username}
             </p>
           </div>
 

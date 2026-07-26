@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useCurrentProfile } from '../lib/academic-data';
 
 export default function Home() {
   const [isMobile, setIsMobile] = useState(false);
+  const profile = useCurrentProfile();
 
   useEffect(() => {
     const checkMobile = () => {
@@ -132,7 +134,7 @@ export default function Home() {
           color: 'var(--text-secondary)',
           margin: '0 0 16px 0'
       }}>
-          Hi, <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{localStorage.getItem('gradex_user_name') || localStorage.getItem('gradex_username') || 'User'}</span>
+          Hi, <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{profile?.name || profile?.username || 'User'}</span>
         </p>
           <h1 style={{
           fontSize: isMobile ? '32px' : 'clamp(40px, 8vw, 56px)',

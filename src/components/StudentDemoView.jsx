@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { useStudentFacultyAttendance } from '../lib/academic-data';
 
 export default function StudentDemoView() {
   const navigate = useNavigate();
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  const [attendance, setAttendance] = useState([]);
-  const [loading, setLoading] = useState(true);
   const demoName = localStorage.getItem('demo_name') || 'Student Demo';
-  const demoUserId = localStorage.getItem('demo_user_id') || 'demo_student_001';
+  const attendanceRows = useStudentFacultyAttendance('s001');
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth <= 768);
@@ -17,87 +15,28 @@ export default function StudentDemoView() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  useEffect(() => {
-    loadAttendance();
+  const attendance = React.useMemo(() => {
+    if (!attendanceRows) return [];
 
-    // Use polling as a quota-friendly alternative to Realtime
-    // Poll every 3 seconds - much more quota-friendly than Realtime subscriptions
-    const pollInterval = setInterval(() => {
-      loadAttendance();
-    }, 3000); // Check for updates every 3 seconds
-
-    // Optional: Try Realtime subscription (more instant but uses quota)
-    // Uncomment below if you want instant updates and have Pro plan / low user count
-    /*
-    const studentId = 's001';
-    const channel = supabase
-      .channel(`faculty_attendance_${studentId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'faculty_attendance',
-          filter: `student_id=eq.${studentId}`
-        },
-        (payload) => {
-          setTimeout(() => loadAttendance(), 200);
-        }
-      )
-      .subscribe();
-    */
-
-    // Cleanup on unmount
-    return () => {
-      clearInterval(pollInterval);
-      // Uncomment if using Realtime:
-      // supabase.removeChannel(channel);
-    };
-  }, []);
-
-  const loadAttendance = async () => {
-    try {
-      // Load attendance for demo student (using demo_student_001 as default)
-      const studentId = 's001'; // Default demo student ID from DEMO_STUDENTS
-      
-      const { data, error } = await supabase
-        .from('faculty_attendance')
-        .select('*')
-        .eq('student_id', studentId)
-        .order('date', { ascending: false })
-        .limit(30);
-
-      if (error) throw error;
-
-      // Group by date
-      const groupedByDate = {};
-      (data || []).forEach(record => {
-        const date = record.date;
-        if (!groupedByDate[date]) {
-          groupedByDate[date] = [];
-        }
-        groupedByDate[date].push({
-          subject: record.subject_code,
-          status: record.status,
-          date: record.date
-        });
+    const groupedByDate = {};
+    attendanceRows.forEach((record) => {
+      if (!groupedByDate[record.date]) {
+        groupedByDate[record.date] = [];
+      }
+      groupedByDate[record.date].push({
+        subject: record.subjectCode,
+        status: record.status,
+        date: record.date,
       });
+    });
 
-      // Convert to array and sort by date
-      const attendanceList = Object.keys(groupedByDate)
-        .map(date => ({
-          date,
-          records: groupedByDate[date]
-        }))
-        .sort((a, b) => new Date(b.date) - new Date(a.date));
-
-      setAttendance(attendanceList);
-    } catch (err) {
-      console.error('Error loading attendance:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    return Object.keys(groupedByDate)
+      .map((date) => ({
+        date,
+        records: groupedByDate[date],
+      }))
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+  }, [attendanceRows]);
 
   const handleLogout = () => {
     localStorage.removeItem('demo_role');
@@ -179,7 +118,7 @@ export default function StudentDemoView() {
       </div>
 
       {/* Attendance List */}
-      {loading ? (
+      {!attendanceRows ? (
         <div style={{
           padding: '40px',
           textAlign: 'center',

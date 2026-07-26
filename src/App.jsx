@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { useLocation, useNavigate, Routes, Route, Navigate, Link } from 'react-router-dom';
+import React, { useState, useRef, useEffect } from 'react';
+import { useLocation, Routes, Route, Navigate } from 'react-router-dom';
+import { useAuth, useClerk, useUser } from '@clerk/clerk-react';
+import { useConvexAuth } from 'convex/react';
 import { Analytics } from '@vercel/analytics/react';
-import AdminPortal from './components/AdminPortal';
 const Admin954 = React.lazy(() => 
   import('./components/Admin954').catch(() => ({ default: () => null }))
 );
@@ -12,10 +13,24 @@ import ManualAttendance from './components/ManualAttendance';
 import Subjects from './components/Subjects';
 import Home from './components/Home';
 import AuthPage from './components/AuthPage';
+import AuthRedirectCallback from './components/AuthRedirectCallback';
 import AttendanceCalendar from './components/AttendanceCalendar';
 import DemoLogin from './components/DemoLogin';
 import FacultyAttendancePanel from './components/FacultyAttendancePanel';
 import StudentDemoView from './components/StudentDemoView';
+import {
+  useCurrentProfile,
+  useLogSocialClick,
+  useSyncCurrentUser,
+  useUpdateCurrentProfile,
+} from './lib/academic-data';
+import {
+  clearLocalAuthCache,
+  getClerkDisplayName,
+  getClerkUsername,
+  splitDisplayName,
+  syncClerkUserToLocalStorage,
+} from './lib/clerk';
 
 const NAV_ITEMS = [
   { id: 'home', label: 'Home', path: '/' },
@@ -32,6 +47,14 @@ const NAV_ITEMS = [
 const AUDIO_URL = '/back-in-black.mp3';
 
 export default function App() {
+  const { isLoaded: authLoaded, isSignedIn } = useAuth();
+  const { isAuthenticated: convexAuthenticated, isLoading: convexAuthLoading } = useConvexAuth();
+  const { signOut } = useClerk();
+  const { isLoaded: userLoaded, user } = useUser();
+  const currentProfile = useCurrentProfile(convexAuthenticated);
+  const syncCurrentUser = useSyncCurrentUser();
+  const updateCurrentProfile = useUpdateCurrentProfile();
+  const logSocialClickMutation = useLogSocialClick();
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioLoaded, setAudioLoaded] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
@@ -45,24 +68,16 @@ export default function App() {
     const saved = localStorage.getItem('gradex-sidebar-collapsed');
     return saved === 'true';
   });
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return !!localStorage.getItem('gradex_user_id');
-  });
-  const [currentUser, setCurrentUser] = useState(() => {
-    const id = localStorage.getItem('gradex_user_id');
-    const username = localStorage.getItem('gradex_username');
-    const name = localStorage.getItem('gradex_user_name');
-    return id ? { id, username, name } : null;
-  });
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [showNameModal, setShowNameModal] = useState(false);
   const [welcomeName, setWelcomeName] = useState('');
   const [nameInput, setNameInput] = useState('');
   const [savingName, setSavingName] = useState(false);
+  const [convexConfigError, setConvexConfigError] = useState('');
   const [isMobile, setIsMobile] = useState(false);
   const audioRef = useRef(null);
+  const syncedUserRef = useRef(null);
   const location = useLocation();
-  const navigate = useNavigate();
 
   // Detect mobile devices
   useEffect(() => {
@@ -75,55 +90,81 @@ export default function App() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-
-  // Listen for auth changes
   useEffect(() => {
-    const handleStorageChange = () => {
-      const id = localStorage.getItem('gradex_user_id');
-      setIsAuthenticated(!!id);
-      if (id) {
-        setCurrentUser({
-          id,
-          username: localStorage.getItem('gradex_username'),
-          name: localStorage.getItem('gradex_user_name')
+    if (!authLoaded || !userLoaded) return;
+
+    if (!isSignedIn || !user) {
+      syncedUserRef.current = null;
+      setConvexConfigError('');
+      clearLocalAuthCache();
+      return;
+    }
+
+    syncClerkUserToLocalStorage(user);
+  }, [authLoaded, userLoaded, isSignedIn, user]);
+
+  useEffect(() => {
+    if (!convexAuthenticated || !user || syncedUserRef.current === user.id) return;
+
+    let cancelled = false;
+
+    const syncUser = async () => {
+      try {
+        await syncCurrentUser({
+          username: getClerkUsername(user),
+          name: getClerkDisplayName(user),
+          email: user.primaryEmailAddress?.emailAddress || undefined,
+          imageUrl: user.imageUrl || undefined,
+          firstName: user.firstName || undefined,
+          lastName: user.lastName || undefined,
         });
-      } else {
-        setCurrentUser(null);
+        if (!cancelled) {
+          syncedUserRef.current = user.id;
+          setConvexConfigError('');
+        }
+      } catch (err) {
+        console.error('Error syncing Clerk user to Convex:', err);
+        if (!cancelled) {
+          setConvexConfigError('Clerk signed in, but Convex user sync failed. Activate the Clerk Convex integration and the `convex` token template in Clerk Dashboard.');
+        }
       }
     };
-    
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+
+    syncUser();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [convexAuthenticated, syncCurrentUser, user]);
+
+  useEffect(() => {
+    if (!convexAuthenticated || !currentProfile) return;
+
+    localStorage.setItem('gradex_user_id', currentProfile.id);
+    localStorage.setItem('gradex_username', currentProfile.username);
+    localStorage.setItem('gradex_user_name', currentProfile.name || currentProfile.username);
+    window.dispatchEvent(new Event('storage'));
+  }, [convexAuthenticated, currentProfile]);
 
   // Function to log social media clicks
   const logSocialClick = async (platform) => {
     try {
-      await fetch('/api/log?type=social-click', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ platform }),
-      });
+      await logSocialClickMutation({ platform });
     } catch (error) {
       console.log('[App] Failed to log social click:', error);
     }
   };
 
-  const handleAuthSuccess = async (user) => {
-    setIsAuthenticated(true);
-    setCurrentUser(user);
-    
-    // Sync subjects from Supabase
-    try {
-      const { syncSubjectsWithDB } = await import('./lib/subjects');
-      await syncSubjectsWithDB();
-    } catch (err) {
-      console.error('Error syncing subjects:', err);
-      }
-    
+  const handleAuthSuccess = async (authUser) => {
+    const resolvedUser = authUser || (user ? {
+      id: user.id,
+      username: getClerkUsername(user),
+      name: getClerkDisplayName(user),
+    } : null);
+
     // Check if user has a name set
-    if (user.name && user.name.trim() && user.name !== user.username) {
-      setWelcomeName(user.name);
+    if (resolvedUser?.name && resolvedUser.name.trim() && resolvedUser.name !== resolvedUser.username) {
+      setWelcomeName(resolvedUser.name);
       setShowWelcomeModal(true);
     } else {
       // No name set, ask for name
@@ -132,18 +173,28 @@ export default function App() {
   };
 
   const handleSaveName = async () => {
-    if (!nameInput.trim() || !currentUser?.id) return;
-    
+    if (!nameInput.trim() || !user) return;
+
     setSavingName(true);
     try {
-      const { supabase } = await import('./lib/supabase');
-      await supabase
-        .from('users')
-        .update({ name: nameInput.trim() })
-        .eq('id', currentUser.id);
-      
-      localStorage.setItem('gradex_user_name', nameInput.trim());
-      setCurrentUser(prev => ({ ...prev, name: nameInput.trim() }));
+      const trimmedName = nameInput.trim();
+      const { firstName, lastName } = splitDisplayName(trimmedName);
+      await user.update({
+        firstName,
+        lastName,
+        unsafeMetadata: {
+          ...(user.unsafeMetadata || {}),
+          displayName: trimmedName,
+        },
+      });
+      await updateCurrentProfile({
+        name: trimmedName,
+        username: getClerkUsername(user),
+        firstName,
+        lastName,
+        imageUrl: user.imageUrl || undefined,
+        email: user.primaryEmailAddress?.emailAddress || undefined,
+      });
       setWelcomeName(nameInput.trim());
       setShowNameModal(false);
       setShowWelcomeModal(true);
@@ -154,17 +205,14 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('gradex_user_id');
-    localStorage.removeItem('gradex_username');
-    localStorage.removeItem('gradex_user_name');
-    localStorage.removeItem('gradex_user_email');
-    localStorage.removeItem('gradex-attendance');
-    localStorage.removeItem('gradex-courses');
-    
-    setIsAuthenticated(false);
-    setCurrentUser(null);
-    window.dispatchEvent(new Event('storage'));
+  const handleLogout = async () => {
+    try {
+      await signOut();
+    } catch (err) {
+      console.error('Error signing out:', err);
+    } finally {
+      clearLocalAuthCache();
+    }
   };
 
   useEffect(() => {
@@ -353,17 +401,83 @@ export default function App() {
     );
   }
 
-  // Show auth page if not authenticated (except for /admin954)
-  if (!isAuthenticated && location.pathname !== '/admin954') {
+  if (!authLoaded || !userLoaded) {
+    return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
+  }
+
+  if (location.pathname === '/auth/callback') {
+    return <AuthRedirectCallback />;
+  }
+
+  if (convexAuthLoading && isSignedIn) {
+    return <div style={{ padding: '40px', textAlign: 'center' }}>Connecting your account...</div>;
+  }
+
+  if (!isSignedIn) {
     return <AuthPage onAuthSuccess={handleAuthSuccess} />;
   }
 
-  // If accessing /admin954 without auth, show minimal layout with just admin panel
-  if (!isAuthenticated && location.pathname === '/admin954') {
+  if (!convexAuthenticated) {
     return (
-      <React.Suspense fallback={<div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>}>
-        <Admin954 />
-      </React.Suspense>
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '24px',
+        background: 'var(--bg-primary)',
+        color: 'var(--text-primary)',
+      }}>
+        <div style={{
+          width: '100%',
+          maxWidth: '560px',
+          padding: '24px',
+          borderRadius: '16px',
+          border: '1px solid var(--border-color)',
+          background: 'var(--card-bg)',
+          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.25)',
+        }}>
+          <h2 style={{ margin: '0 0 12px', fontSize: '1.3rem' }}>Convex Connection Required</h2>
+          <p style={{ margin: '0 0 12px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+            Clerk sign-in completed, but Convex has not accepted the session yet. The app now waits for real Convex auth before opening your data.
+          </p>
+          <p style={{ margin: '0 0 18px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+            {convexConfigError || 'Set up the Clerk Convex integration for this Clerk app and enable the `convex` token template, then reload.'}
+          </p>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              style={{
+                padding: '10px 14px',
+                borderRadius: '10px',
+                border: '1px solid var(--border-color)',
+                background: 'var(--text-primary)',
+                color: 'var(--bg-primary)',
+                cursor: 'pointer',
+                fontWeight: 700,
+              }}
+            >
+              Reload
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              style={{
+                padding: '10px 14px',
+                borderRadius: '10px',
+                border: '1px solid var(--border-color)',
+                background: 'transparent',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                fontWeight: 700,
+              }}
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -514,7 +628,7 @@ export default function App() {
           isCollapsed={isSidebarCollapsed}
           onToggle={handleSidebarToggle}
           navItems={NAV_ITEMS}
-            isConnected={isAuthenticated}
+            isConnected={convexAuthenticated}
           onLogout={handleLogout}
         />
         <main className="app-main single" style={{
@@ -528,6 +642,7 @@ export default function App() {
           zIndex: 1
         }}>
         <Routes>
+          <Route path="/auth/callback" element={<AuthRedirectCallback />} />
           <Route path="/" element={<Home />} />
           <Route path="/home" element={<Home />} />
           <Route path="/schedule" element={<Timetable />} />
@@ -538,7 +653,11 @@ export default function App() {
           <Route path="/calendar" element={<AttendanceCalendar />} />
           <Route path="/subjects" element={<Subjects />} />
           <Route path="/user" element={<UserPage />} />
-          <Route path="/admin" element={<AdminPortal />} />
+          <Route path="/admin" element={
+            <React.Suspense fallback={<div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>}>
+              <Admin954 />
+            </React.Suspense>
+          } />
           <Route path="/admin954" element={
               <React.Suspense fallback={<div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>}>
                 <Admin954 />

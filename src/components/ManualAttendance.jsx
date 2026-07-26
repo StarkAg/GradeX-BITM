@@ -1,16 +1,14 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
-import { getSubjects, getSubjectColor } from '../lib/subjects';
+import { useAcademicSnapshot, useSetManualAttendanceTotal } from '../lib/academic-data';
+import { getSubjectColor } from '../lib/subjects';
 import { logActivity, getActivityLog, formatTimestamp } from '../lib/activity-log';
 import { isViewOnlyMode } from '../lib/view-only';
 
 export default function ManualAttendance() {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
-  const [subjects, setSubjects] = useState([]);
-  const [attendanceData, setAttendanceData] = useState({});
-  const [loading, setLoading] = useState(true);
+  const snapshot = useAcademicSnapshot();
+  const setManualAttendanceTotal = useSetManualAttendanceTotal();
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [showControls, setShowControls] = useState(false);
   const [showActivityLog, setShowActivityLog] = useState(false);
@@ -20,45 +18,6 @@ export default function ManualAttendance() {
   useEffect(() => {
     setViewOnly(isViewOnlyMode());
   }, []);
-
-  useEffect(() => {
-    const userId = localStorage.getItem('gradex_user_id');
-    const username = localStorage.getItem('gradex_username');
-    if (userId) setUser({ id: userId, username });
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    setSubjects(getSubjects());
-    const handleUpdate = () => setSubjects(getSubjects());
-    window.addEventListener('subjectsUpdated', handleUpdate);
-    return () => window.removeEventListener('subjectsUpdated', handleUpdate);
-  }, []);
-
-  const loadAttendance = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      const { data, error } = await supabase
-        .from('manual_attendance')
-        .select('subject_code, classes_attended, classes_conducted')
-        .eq('user_id', user.id);
-      if (error) throw error;
-      const attendanceMap = {};
-      (data || []).forEach(record => {
-        attendanceMap[record.subject_code] = {
-          attended: record.classes_attended || 0,
-          conducted: record.classes_conducted || 0
-        };
-      });
-      setAttendanceData(attendanceMap);
-    } catch (err) {
-      console.error('Error loading attendance:', err);
-    }
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (user?.id) loadAttendance();
-  }, [user?.id, loadAttendance]);
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -82,30 +41,21 @@ export default function ManualAttendance() {
     return '#f87171';
   };
 
-  const formatDateKey = (date) => {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  };
+  const subjects = snapshot?.subjects || [];
+  const attendanceData = snapshot?.attendanceTotals || {};
 
   const updateAttendance = async (subjectCode, attendedDelta, conductedDelta) => {
-    if (!user?.id || viewOnly) return; // Prevent edits in view-only mode
+    if (viewOnly) return; // Prevent edits in view-only mode
     const current = attendanceData[subjectCode] || { attended: 0, conducted: 0 };
     const newAttended = Math.max(0, current.attended + attendedDelta);
     const newConducted = Math.max(0, current.conducted + conductedDelta);
 
-    setAttendanceData(prev => ({
-      ...prev,
-      [subjectCode]: { attended: newAttended, conducted: newConducted }
-    }));
-
     try {
-      // Only update manual_attendance totals - do NOT sync to daily_attendance
-      // This prevents dots from appearing in calendar when using preset attendance
-      await supabase.from('manual_attendance').upsert({
-        user_id: user.id,
-        subject_code: subjectCode,
-        classes_attended: newAttended,
-        classes_conducted: newConducted
-      }, { onConflict: 'user_id,subject_code' });
+      await setManualAttendanceTotal({
+        subjectCode,
+        attended: newAttended,
+        conducted: newConducted,
+      });
       
       // Log the activity
       const subject = subjects.find(s => s.code === subjectCode);
@@ -118,7 +68,6 @@ export default function ManualAttendance() {
       });
     } catch (err) {
       console.error('Error updating attendance:', err);
-      await loadAttendance();
     }
   };
 
@@ -136,19 +85,7 @@ export default function ManualAttendance() {
     return Math.max(0, Math.floor((100 * attended - 75 * conducted) / 75));
   };
 
-  if (!user && !loading) {
-    return (
-      <div style={{ width: '100%', maxWidth: '1200px', margin: '0 auto' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '16px' }}>Attendance Tracker</h1>
-        <div style={{ padding: '40px', textAlign: 'center', background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '12px' }}>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>Sign in to track your attendance</p>
-          <button onClick={() => window.location.href = '/user'} style={{ padding: '10px 24px', background: 'var(--text-primary)', color: 'var(--bg-primary)', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Sign In</button>
-        </div>
-      </div>
-    );
-  }
-
-  if (loading) {
+  if (!snapshot) {
     return <div style={{ textAlign: 'center', padding: '40px' }}><div style={{ width: '40px', height: '40px', border: '3px solid var(--border-color)', borderTopColor: 'var(--text-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }} /><style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style></div>;
   }
 

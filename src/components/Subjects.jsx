@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { getSubjects, addSubject, removeSubject, saveSubjects, getSubjectColor, DEFAULT_SUBJECTS } from '../lib/subjects';
+import { useAcademicSnapshot, useSaveAcademicState } from '../lib/academic-data';
+import { getSubjectColor, DEFAULT_SUBJECTS, DEFAULT_TIMETABLE } from '../lib/subjects';
 import ConfirmModal from './ConfirmModal';
 import { logActivity } from '../lib/activity-log';
 import { isViewOnlyMode } from '../lib/view-only';
@@ -17,21 +18,11 @@ const TIME_SLOTS = [
   { period: 9, time: '5:30 - 6:20' },
 ];
 
-// Default timetable
-const DEFAULT_TIMETABLE = {
-  'Monday': [{ code: 'OB' }, { code: 'MM' }, { code: 'BE' }, { code: 'EI' }, { code: 'QDA', room: 'LH-02' }, null, null, null, null],
-  'Tuesday': [{ code: 'WAB', room: 'LAB IIIB', isLab: true }, { code: 'WAB', room: 'LAB IIIB', isLab: true }, { code: 'BE' }, { code: 'PSCW', room: 'Lab', isLab: true }, { code: 'PSCW', room: 'LH-02', isLab: true }, null, null, null, null],
-  'Wednesday': [{ code: 'EI' }, { code: 'OB' }, { code: 'BE' }, { code: 'MM' }, { code: 'MM', room: 'LH-02' }, null, null, null, null],
-  'Thursday': [{ code: 'QDA' }, { code: 'QDA', room: 'LAB IIIB', isLab: true }, { code: 'PSCW' }, { code: 'OB' }, null, null, null, null, null],
-  'Friday': [{ code: 'WAB' }, { code: 'MM' }, { code: 'WAB' }, { code: 'QDA' }, null, null, null, null, null],
-};
-
 export default function Subjects() {
+  const snapshot = useAcademicSnapshot();
+  const saveAcademicState = useSaveAcademicState();
   const [subjects, setSubjects] = useState([]);
-  const [timetable, setTimetable] = useState(() => {
-    const saved = localStorage.getItem('gradex_timetable');
-    return saved ? JSON.parse(saved) : DEFAULT_TIMETABLE;
-  });
+  const [timetable, setTimetable] = useState(DEFAULT_TIMETABLE);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newSubject, setNewSubject] = useState({ name: '', code: '', room: 'LH-11', isLab: false, schedule: {} });
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, code: null });
@@ -50,15 +41,13 @@ export default function Subjects() {
   }, []);
 
   useEffect(() => {
-    setSubjects(getSubjects());
-    const handleUpdate = () => setSubjects(getSubjects());
-    window.addEventListener('subjectsUpdated', handleUpdate);
-    return () => window.removeEventListener('subjectsUpdated', handleUpdate);
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('gradex_timetable', JSON.stringify(timetable));
-  }, [timetable]);
+    if (!snapshot) return;
+    setSubjects(snapshot.subjects || []);
+    setTimetable({
+      ...DEFAULT_TIMETABLE,
+      ...(snapshot.timetable || {}),
+    });
+  }, [snapshot]);
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -75,6 +64,20 @@ export default function Subjects() {
     });
   };
 
+  const persistAcademicState = async (nextSubjects, nextTimetable) => {
+    setSubjects(nextSubjects);
+    setTimetable(nextTimetable);
+    await saveAcademicState({
+      subjects: nextSubjects.map((subject) => ({
+        name: subject.name,
+        code: subject.code,
+        room: subject.room || 'LH-11',
+        isLab: Boolean(subject.isLab),
+      })),
+      timetable: nextTimetable,
+    });
+  };
+
   const handleAddSubject = async () => {
     if (!newSubject.name.trim() || viewOnly) return; // Prevent edits in view-only mode
     const code = newSubject.code.trim() || newSubject.name.split(' ').map(w => w[0]).join('').toUpperCase();
@@ -82,7 +85,6 @@ export default function Subjects() {
     if (newSubject.isEdit) {
       // Update existing subject
       const updatedSubjects = subjects.map(s => s.code === code ? { ...s, name: newSubject.name.trim(), room: newSubject.room || 'LH-11' } : s);
-      await saveSubjects(updatedSubjects);
       logActivity('subject_updated', {
         name: newSubject.name.trim(),
         code,
@@ -101,9 +103,12 @@ export default function Subjects() {
         if (!newTimetable[day]) newTimetable[day] = Array(9).fill(null);
         newTimetable[day][parseInt(slotIndex)] = { code, room: newSubject.room || 'LH-11', isLab: newSubject.isLab };
       });
-      setTimetable(newTimetable);
+      await persistAcademicState(updatedSubjects, newTimetable);
     } else {
-      await addSubject({ name: newSubject.name.trim(), code, room: newSubject.room || 'LH-11' });
+      const nextSubjects = [
+        ...subjects,
+        { name: newSubject.name.trim(), code, room: newSubject.room || 'LH-11', isLab: newSubject.isLab },
+      ];
       logActivity('subject_added', {
         name: newSubject.name.trim(),
         code,
@@ -117,7 +122,7 @@ export default function Subjects() {
         if (!newTimetable[day]) newTimetable[day] = Array(9).fill(null);
         newTimetable[day][parseInt(slotIndex)] = { code, room: newSubject.room || 'LH-11', isLab: newSubject.isLab };
       });
-      setTimetable(newTimetable);
+      await persistAcademicState(nextSubjects, newTimetable);
     }
     
     setNewSubject({ name: '', code: '', room: 'LH-11', isLab: false, schedule: {} });
@@ -149,18 +154,18 @@ export default function Subjects() {
   const confirmDelete = async () => {
     if (deleteConfirm.code) {
       const subject = subjects.find(s => s.code === deleteConfirm.code);
-      await removeSubject(deleteConfirm.code);
       logActivity('subject_removed', {
         name: subject?.name || deleteConfirm.code,
         code: deleteConfirm.code
       });
+      const filteredSubjects = subjects.filter(s => s.code !== deleteConfirm.code);
       const newTimetable = { ...timetable };
       DAYS.forEach(day => {
         if (newTimetable[day]) {
           newTimetable[day] = newTimetable[day].map(cell => cell?.code === deleteConfirm.code ? null : cell);
         }
       });
-      setTimetable(newTimetable);
+      await persistAcademicState(filteredSubjects, newTimetable);
     }
     setDeleteConfirm({ open: false, code: null });
   };
@@ -172,11 +177,13 @@ export default function Subjects() {
 
   const confirmReset = async () => {
     if (viewOnly) return; // Prevent edits in view-only mode
-    await saveSubjects([...DEFAULT_SUBJECTS]);
-    setTimetable(DEFAULT_TIMETABLE);
-    localStorage.setItem('gradex_timetable', JSON.stringify(DEFAULT_TIMETABLE));
+    await persistAcademicState([...DEFAULT_SUBJECTS], DEFAULT_TIMETABLE);
     setResetConfirm(false);
   };
+
+  if (!snapshot) {
+    return <div style={{ padding: '40px', textAlign: 'center' }}>Loading subjects...</div>;
+  }
 
   return (
     <div style={{ 

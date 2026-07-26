@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
-import { getSubjects, getSubjectColor } from '../lib/subjects';
+import React, { useState, useEffect } from 'react';
+import { useAcademicSnapshot, useSetDailyAttendanceStatus } from '../lib/academic-data';
+import { DEFAULT_TIMETABLE, getSubjectColor } from '../lib/subjects';
 import { logActivity } from '../lib/activity-log';
 import { isViewOnlyMode } from '../lib/view-only';
 
@@ -9,17 +9,16 @@ const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export default function AttendanceCalendar() {
+  const snapshot = useAcademicSnapshot();
+  const setDailyAttendanceStatus = useSetDailyAttendanceStatus();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
   const [subjects, setSubjects] = useState([]);
-  const [timetable, setTimetable] = useState({});
+  const [timetable, setTimetable] = useState(DEFAULT_TIMETABLE);
   const [dailyAttendance, setDailyAttendance] = useState({});
-  const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [hoveredDate, setHoveredDate] = useState(null);
   const [viewOnly, setViewOnly] = useState(false);
-
-  const userId = localStorage.getItem('gradex_user_id');
 
   useEffect(() => {
     setViewOnly(isViewOnlyMode());
@@ -31,243 +30,15 @@ export default function AttendanceCalendar() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Load schedule from Supabase cache on mount
-  const loadSchedule = useCallback(async () => {
-    if (!userId) return;
-    
-    try {
-      const { data: cacheData, error: cacheError } = await supabase
-        .from('timetable_cache')
-        .select('*')
-        .eq('user_id', userId)
-        .gt('expires_at', new Date().toISOString())
-        .maybeSingle();
-
-      if (!cacheError && cacheData && cacheData.raw_data && cacheData.raw_data.schedule) {
-        // Schedule data found in cache
-        const scheduleData = cacheData.raw_data.schedule;
-        if (scheduleData && typeof scheduleData === 'object') {
-          // Update timetable if schedule data is available
-          setTimetable(scheduleData);
-          localStorage.setItem('gradex_timetable', JSON.stringify(scheduleData));
-        }
-      }
-    } catch (err) {
-      console.log('[Calendar] Could not load schedule from cache:', err);
-    }
-  }, [userId]);
-
   useEffect(() => {
-    setSubjects(getSubjects());
-    const saved = localStorage.getItem('gradex_timetable');
-    if (saved) setTimetable(JSON.parse(saved));
-    
-    // Attempt to load schedule from Supabase cache
-    loadSchedule();
-    
-    const handleUpdate = () => setSubjects(getSubjects());
-    window.addEventListener('subjectsUpdated', handleUpdate);
-    return () => window.removeEventListener('subjectsUpdated', handleUpdate);
-  }, [loadSchedule]);
-
-  // Load daily attendance from Supabase
-  const loadDailyAttendance = useCallback(async () => {
-    if (!userId) return;
-    try {
-      const { data, error } = await supabase
-        .from('daily_attendance')
-        .select('*')
-        .eq('user_id', userId);
-      
-      if (error) throw error;
-      
-      const attendanceMap = {};
-      (data || []).forEach(record => {
-        const key = record.date;
-        if (!attendanceMap[key]) attendanceMap[key] = {};
-        // Only add valid statuses
-        if (record.status === 'present' || record.status === 'absent') {
-          attendanceMap[key][record.subject_code] = record.status;
-        }
-      });
-      setDailyAttendance(attendanceMap);
-      // Sync to localStorage
-      localStorage.setItem('gradex_daily_attendance', JSON.stringify(attendanceMap));
-    } catch (err) {
-      console.error('Error loading daily attendance:', err);
-      // Load from localStorage as fallback
-      const saved = localStorage.getItem('gradex_daily_attendance');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Clean up any invalid entries
-        const cleaned = {};
-        Object.keys(parsed).forEach(date => {
-          const dayData = parsed[date];
-          const validEntries = {};
-          Object.keys(dayData).forEach(subjectCode => {
-            const status = dayData[subjectCode];
-            if (status === 'present' || status === 'absent') {
-              validEntries[subjectCode] = status;
-            }
-          });
-          if (Object.keys(validEntries).length > 0) {
-            cleaned[date] = validEntries;
-          }
-        });
-        setDailyAttendance(cleaned);
-        localStorage.setItem('gradex_daily_attendance', JSON.stringify(cleaned));
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [userId]);
-
-  useEffect(() => {
-    loadDailyAttendance();
-    
-    // Listen for attendance updates from other pages
-    const handleAttendanceUpdate = () => {
-      loadDailyAttendance();
-    };
-    window.addEventListener('attendanceUpdated', handleAttendanceUpdate);
-    
-    return () => {
-      window.removeEventListener('attendanceUpdated', handleAttendanceUpdate);
-    };
-  }, [loadDailyAttendance]);
-
-  // Specifically check and clean today's date on mount
-  useEffect(() => {
-    if (!userId || loading) return;
-    
-    const todayStr = formatDateKey(new Date());
-    const todayData = dailyAttendance[todayStr];
-    
-    if (todayData) {
-      const validEntries = {};
-      let hasInvalid = false;
-      
-      Object.keys(todayData).forEach(subjectCode => {
-        const status = todayData[subjectCode];
-        if (status === 'present' || status === 'absent') {
-          validEntries[subjectCode] = status;
-        } else {
-          hasInvalid = true;
-        }
-      });
-      
-      // If we found invalid data for today, clean it
-      if (hasInvalid || Object.keys(validEntries).length !== Object.keys(todayData).length) {
-        const updated = { ...dailyAttendance };
-        if (Object.keys(validEntries).length > 0) {
-          updated[todayStr] = validEntries;
-        } else {
-          delete updated[todayStr];
-        }
-        setDailyAttendance(updated);
-        localStorage.setItem('gradex_daily_attendance', JSON.stringify(updated));
-        
-        // Clean Supabase
-        if (hasInvalid) {
-          supabase
-            .from('daily_attendance')
-            .delete()
-            .eq('user_id', userId)
-            .eq('date', todayStr)
-            .then(() => {
-              // Reload to ensure sync
-              loadDailyAttendance();
-            })
-            .catch(err => console.error('Error cleaning today from Supabase:', err));
-        }
-      }
-    }
-  }, [userId, loading, dailyAttendance, loadDailyAttendance]);
-
-  // Clean up invalid data and ensure Supabase is in sync
-  useEffect(() => {
-    if (!userId || loading) return;
-    
-    const cleanData = async () => {
-      const cleaned = {};
-      const datesToDelete = [];
-      
-      Object.keys(dailyAttendance).forEach(date => {
-        const dayData = dailyAttendance[date];
-        const validEntries = {};
-        let hasInvalid = false;
-        
-        Object.keys(dayData).forEach(subjectCode => {
-          const status = dayData[subjectCode];
-          // Only accept 'present' or 'absent', nothing else
-          if (status === 'present' || status === 'absent') {
-            validEntries[subjectCode] = status;
-          } else {
-            hasInvalid = true;
-          }
-        });
-        
-        if (Object.keys(validEntries).length > 0) {
-          cleaned[date] = validEntries;
-        } else if (Object.keys(dayData).length > 0) {
-          hasInvalid = true;
-          datesToDelete.push(date);
-        }
-      });
-      
-      // If we found invalid data, clean it up
-      if (datesToDelete.length > 0 || JSON.stringify(cleaned) !== JSON.stringify(dailyAttendance)) {
-        // Update state
-        setDailyAttendance(cleaned);
-        localStorage.setItem('gradex_daily_attendance', JSON.stringify(cleaned));
-        
-        // Clean up Supabase - delete invalid entries
-        if (datesToDelete.length > 0) {
-          for (const date of datesToDelete) {
-            try {
-              await supabase
-                .from('daily_attendance')
-                .delete()
-                .eq('user_id', userId)
-                .eq('date', date);
-            } catch (err) {
-              console.error(`Error cleaning date ${date} from Supabase:`, err);
-            }
-          }
-        }
-        
-        // Also check for any invalid statuses in Supabase and delete them
-        try {
-          const { data: allRecords } = await supabase
-            .from('daily_attendance')
-            .select('*')
-            .eq('user_id', userId);
-          
-          if (allRecords) {
-            const invalidRecords = allRecords.filter(r => 
-              r.status !== 'present' && r.status !== 'absent'
-            );
-            
-            if (invalidRecords.length > 0) {
-              for (const record of invalidRecords) {
-                await supabase
-                  .from('daily_attendance')
-                  .delete()
-                  .eq('id', record.id);
-              }
-            }
-          }
-        } catch (err) {
-          console.error('Error checking Supabase for invalid records:', err);
-        }
-      }
-    };
-    
-    // Only run cleanup if we have data
-    if (Object.keys(dailyAttendance).length > 0) {
-      cleanData();
-    }
-  }, [dailyAttendance, userId, loading]);
+    if (!snapshot) return;
+    setSubjects(snapshot.subjects || []);
+    setTimetable({
+      ...DEFAULT_TIMETABLE,
+      ...(snapshot.timetable || {}),
+    });
+    setDailyAttendance(snapshot.dailyAttendance || {});
+  }, [snapshot]);
 
   // Disable scroll on this page
   // Lock scroll on Calendar page (mobile and desktop)
@@ -366,118 +137,29 @@ export default function AttendanceCalendar() {
       } else {
         updated[dateStr][subjectCode] = newStatus;
       }
-      // Save to localStorage
-      localStorage.setItem('gradex_daily_attendance', JSON.stringify(updated));
       return updated;
     });
 
-    // Sync to Supabase
-    if (userId) {
-      try {
-        const subject = subjects.find(s => s.code === subjectCode);
-        if (newStatus === null) {
-          await supabase
-            .from('daily_attendance')
-            .delete()
-            .eq('user_id', userId)
-            .eq('date', dateStr)
-            .eq('subject_code', subjectCode);
-          logActivity('attendance_updated', {
-            subject: subject?.name || subjectCode,
-            subjectCode,
-            action: 'removed',
-            date: dateStr,
-            method: 'calendar'
-          });
-        } else {
-          await supabase
-            .from('daily_attendance')
-            .upsert({
-              user_id: userId,
-              date: dateStr,
-              subject_code: subjectCode,
-              status: newStatus
-            }, { onConflict: 'user_id,date,subject_code' });
-          logActivity('attendance_updated', {
-            subject: subject?.name || subjectCode,
-            subjectCode,
-            action: 'marked',
-            status: newStatus,
-            date: dateStr,
-            method: 'calendar'
-          });
-        }
-
-        // Update manual_attendance totals
-        await updateAttendanceTotals(subjectCode);
-        
-        // Reload attendance to ensure consistency
-        await loadDailyAttendance();
-      } catch (err) {
-        console.error('Error syncing attendance:', err);
-        // Reload anyway to sync state
-        await loadDailyAttendance();
-      }
-    }
-  };
-
-  // Recalculate totals for a subject based on daily records
-  // Handles all variations: base code, -LAB, and numbered duplicates (e.g., MM, MM-2, QDA-LAB)
-  const updateAttendanceTotals = async (subjectCode) => {
-    if (!userId) return;
-    
-    // Extract base code (remove -LAB suffix or numbered suffix like -2, -3, etc.)
-    let baseCode = subjectCode;
-    if (baseCode.endsWith('-LAB')) {
-      baseCode = baseCode.replace('-LAB', '');
-    } else if (baseCode.includes('-')) {
-      // Remove numbered suffix (e.g., "MM-2" -> "MM")
-      const parts = baseCode.split('-');
-      const lastPart = parts[parts.length - 1];
-      if (!isNaN(lastPart)) {
-        baseCode = parts.slice(0, -1).join('-');
-      }
-    }
-    
-    const saved = localStorage.getItem('gradex_daily_attendance');
-    const allDaily = saved ? JSON.parse(saved) : dailyAttendance;
-    
-    let attended = 0;
-    let conducted = 0;
-    
-    // Count all variations of this subject (base code, lab, and numbered duplicates)
-    Object.values(allDaily).forEach(dayData => {
-      Object.keys(dayData).forEach(code => {
-        // Check if this code belongs to the base subject
-        let codeBase = code;
-        if (codeBase.endsWith('-LAB')) {
-          codeBase = codeBase.replace('-LAB', '');
-        } else if (codeBase.includes('-')) {
-          const parts = codeBase.split('-');
-          const lastPart = parts[parts.length - 1];
-          if (!isNaN(lastPart)) {
-            codeBase = parts.slice(0, -1).join('-');
-          }
-        }
-        
-        // If this code belongs to our base subject, count it
-        if (codeBase === baseCode) {
-          conducted++;
-          if (dayData[code] === 'present') attended++;
-        }
-      });
-    });
-
     try {
-      // Update totals for the base subject code (includes all variations)
-      await supabase.from('manual_attendance').upsert({
-        user_id: userId,
-        subject_code: baseCode,
-        classes_attended: attended,
-        classes_conducted: conducted
-      }, { onConflict: 'user_id,subject_code' });
+      const subject = subjects.find(s => s.code === subjectCode);
+      await setDailyAttendanceStatus({
+        date: dateStr,
+        subjectCode,
+        status: newStatus,
+      });
+      logActivity('attendance_updated', {
+        subject: subject?.name || subjectCode,
+        subjectCode,
+        action: newStatus === null ? 'removed' : 'marked',
+        status: newStatus || undefined,
+        date: dateStr,
+        method: 'calendar'
+      });
     } catch (err) {
-      console.error('Error updating totals:', err);
+      console.error('Error syncing attendance:', err);
+      if (snapshot?.dailyAttendance) {
+        setDailyAttendance(snapshot.dailyAttendance);
+      }
     }
   };
 
@@ -583,7 +265,7 @@ export default function AttendanceCalendar() {
     return day === 0 || day === 6;
   };
 
-  if (loading) {
+  if (!snapshot) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '300px' }}>
         <div style={{ width: '40px', height: '40px', border: '3px solid var(--border-color)', borderTopColor: 'var(--text-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
