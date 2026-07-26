@@ -65,6 +65,14 @@ function TimetableGrid({ subjects, timetable }) {
   );
 }
 
+// Today's weekday if it's Mon-Fri, else Monday - so opening the day view
+// on a Tuesday shows Tuesday, not an empty Saturday.
+function getDefaultDayIndex() {
+  const jsDay = new Date().getDay(); // 0=Sun ... 6=Sat
+  const index = jsDay - 1; // Monday=0 ... Friday=4
+  return index >= 0 && index <= 4 ? index : 0;
+}
+
 export default function Timetable() {
   const snapshot = useAcademicSnapshot();
   const profile = useCurrentProfile();
@@ -73,6 +81,18 @@ export default function Timetable() {
   const [isMobile, setIsMobile] = useState(false);
   const [loading, setLoading] = useState(false);
   const timetableRef = useRef(null);
+
+  // Mobile view: 'grid' = whole week at once (scrolls sideways), 'day' = one
+  // day of stacked period cards at a time.
+  const [mobileView, setMobileView] = useState(() => {
+    if (typeof window === 'undefined') return 'grid';
+    try {
+      return localStorage.getItem('bitm_timetable_mobile_view') === 'day' ? 'day' : 'grid';
+    } catch (_) {
+      return 'grid';
+    }
+  });
+  const [selectedDayIndex, setSelectedDayIndex] = useState(getDefaultDayIndex);
 
   useEffect(() => {
     if (!snapshot) return;
@@ -181,9 +201,33 @@ export default function Timetable() {
           display: 'flex',
       flexDirection: 'column'
     }}>
-      <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 4px 0' }}>Class Schedule</h1>
-        <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>BBA II A • BIT Mesra, Lalpur</p>
+      <div style={{ textAlign: 'center', marginBottom: isMobile ? '14px' : '20px', flexShrink: 0 }}>
+        <div style={{
+          display: 'inline-block',
+          padding: '4px 12px',
+          marginBottom: '10px',
+          borderRadius: '999px',
+          border: '1px solid var(--border-color)',
+          background: 'var(--hover-bg)',
+          fontSize: '10px',
+          fontWeight: 700,
+          letterSpacing: '0.14em',
+          textTransform: 'uppercase',
+          color: 'var(--text-secondary)',
+        }}>
+          GradeX &middot; BITM
+        </div>
+        <h1 style={{
+          fontSize: isMobile ? '22px' : '30px',
+          fontWeight: 700,
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+          color: 'var(--text-primary)',
+          margin: '0 0 6px 0',
+        }}>
+          Schedule
+        </h1>
+        <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>BBA III A &bull; BIT Mesra, Lalpur</p>
           </div>
 
       {/* Note about Managing Schedule */}
@@ -263,7 +307,51 @@ export default function Timetable() {
 
       {isMobile && (
         <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100dvh - 240px)', overflow: 'hidden', paddingBottom: '80px' }}>
-          {/* Mobile Timetable Grid */}
+          {/* View toggle: whole-week grid <-> one day at a time */}
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px', flexShrink: 0 }}>
+            <button
+              type="button"
+              aria-label={mobileView === 'grid' ? 'Show one day at a time' : 'Show the whole week'}
+              onClick={() => {
+                const next = mobileView === 'grid' ? 'day' : 'grid';
+                setMobileView(next);
+                try { localStorage.setItem('bitm_timetable_mobile_view', next); } catch (_) {}
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '32px',
+                height: '32px',
+                borderRadius: '4px',
+                border: '1px solid var(--border-color)',
+                background: mobileView === 'grid' ? 'var(--hover-bg)' : 'var(--card-bg)',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              {mobileView === 'grid' ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="8" y1="6" x2="21" y2="6"></line>
+                  <line x1="8" y1="12" x2="21" y2="12"></line>
+                  <line x1="8" y1="18" x2="21" y2="18"></line>
+                  <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                  <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                  <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="14" width="7" height="7"></rect>
+                  <rect x="3" y="14" width="7" height="7"></rect>
+                </svg>
+              )}
+            </button>
+          </div>
+
+          {mobileView === 'grid' && (
           <div style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <div style={{ minWidth: '600px', padding: '8px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
               {/* Header Row */}
@@ -304,6 +392,84 @@ export default function Timetable() {
               })}
             </div>
           </div>
+          )}
+
+          {mobileView === 'day' && (() => {
+            const subjectMap = {};
+            subjects.forEach((s, idx) => { subjectMap[s.code] = { ...s, colorIndex: idx }; });
+            const dayName = DAYS[selectedDayIndex];
+            const dayCells = timetable[dayName] || [];
+
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                {/* Day switcher */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '6px 4px', marginBottom: '8px', flexShrink: 0,
+                }}>
+                  <button
+                    type="button"
+                    aria-label="Previous day"
+                    onClick={() => setSelectedDayIndex((i) => (i - 1 + DAYS.length) % DAYS.length)}
+                    style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                  </button>
+                  <div style={{
+                    padding: '6px 16px', borderRadius: '999px', background: getDayColor(selectedDayIndex),
+                    fontSize: '13px', fontWeight: 700, color: '#000',
+                  }}>
+                    {dayName}
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Next day"
+                    onClick={() => setSelectedDayIndex((i) => (i + 1) % DAYS.length)}
+                    style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                  </button>
+                </div>
+
+                {/* Stacked period cards for the selected day */}
+                <div style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {TIME_SLOTS.map((slot, idx) => {
+                    const cell = dayCells[idx];
+                    const subject = cell ? subjectMap[cell.code] : null;
+                    const bgColor = subject ? getSubjectColor(subject.colorIndex) : null;
+                    return (
+                      <div
+                        key={slot.period}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px',
+                          borderRadius: '8px', minHeight: '52px',
+                          background: subject ? bgColor : 'var(--hover-bg)',
+                          border: subject ? 'none' : '1px dashed var(--border-color)',
+                        }}
+                      >
+                        <div style={{ width: '64px', flexShrink: 0, fontSize: '10px', fontWeight: 700, color: subject ? '#000' : 'var(--text-secondary)', lineHeight: 1.3 }}>
+                          {slot.time.split(' - ')[0]}<br/>
+                          <span style={{ opacity: 0.65 }}>{slot.time.split(' - ')[1]}</span>
+                        </div>
+                        {subject ? (
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '13px', fontWeight: 700, color: '#000' }}>
+                              {subject.name}{cell.isLab ? ' (LAB)' : ''}
+                            </div>
+                            <div style={{ fontSize: '11px', color: 'rgba(0,0,0,0.7)', marginTop: '2px' }}>
+                              {cell.code} &bull; {cell.room || subject.room || 'LH-11'}
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Free period</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
