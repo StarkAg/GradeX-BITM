@@ -263,117 +263,245 @@ export default function Timetable() {
             </button>
           </div>
 
-          {mobileView === 'grid' && (
-          <div style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch' }}>
-            <div style={{ minWidth: '600px', padding: '8px', background: 'var(--card-bg)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-              {/* Header Row */}
-              <div style={{ display: 'grid', gridTemplateColumns: '55px repeat(9, 1fr)', borderBottom: '2px solid var(--border-color)' }}>
-                <div style={{ padding: '8px 4px', background: 'rgba(128,128,128,0.15)', fontSize: '9px', fontWeight: 700, textAlign: 'center', color: 'var(--text-secondary)', borderRight: '1px solid var(--border-color)' }}>Day</div>
-                {TIME_SLOTS.map((slot, idx) => (
-                  <div key={slot.period} style={{ padding: '6px 2px', background: 'rgba(128,128,128,0.15)', fontSize: '7px', fontWeight: 600, textAlign: 'center', color: 'var(--text-secondary)', lineHeight: 1.3, borderRight: idx < TIME_SLOTS.length - 1 ? '1px solid var(--border-color)' : 'none' }}>
-                    {slot.time.split(' - ')[0]}<br/><span style={{ opacity: 0.6, fontSize: '6px' }}>{slot.time.split(' - ')[1]}</span>
-          </div>
-            ))}
-          </div>
-              {/* Day Rows */}
-              {DAYS.map((day, dayIdx) => {
-                const subjectMap = {};
-                subjects.forEach((s, idx) => { subjectMap[s.code] = { ...s, colorIndex: idx }; });
-                return (
-                  <div key={day} style={{ display: 'grid', gridTemplateColumns: '55px repeat(9, 1fr)', borderBottom: dayIdx < DAYS.length - 1 ? '1px solid var(--border-color)' : 'none' }}>
-                    <div style={{ padding: '8px 4px', background: getDayColor(dayIdx), fontSize: '9px', fontWeight: 700, textAlign: 'center', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '2px solid rgba(0, 0, 0, 0.2)', width: '55px', minWidth: '55px', maxWidth: '55px', whiteSpace: 'nowrap', overflow: 'hidden', boxShadow: '2px 0 2px rgba(0, 0, 0, 0.05)' }}>
-                      {day.slice(0, 3)}
-        </div>
-                    {TIME_SLOTS.map((slot, idx) => {
-                      const cell = timetable[day]?.[idx];
-                      const subject = cell ? subjectMap[cell.code] : null;
-                      const bgColor = subject ? getSubjectColor(subject.colorIndex) : 'transparent';
-                      return (
-                        <div key={slot.period} style={{ padding: '4px 2px', background: bgColor, minHeight: '38px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRight: idx < TIME_SLOTS.length - 1 ? '1px solid var(--border-color)' : 'none' }}>
-                          {cell && subject && (
-                  <>
-                              <div style={{ fontSize: '9px', fontWeight: 700, color: '#000', textAlign: 'center', lineHeight: 1.1 }}>{cell.code}</div>
-                              <div style={{ fontSize: '6px', color: 'rgba(0,0,0,0.7)', textAlign: 'center', marginTop: '2px' }}>{cell.room || subject.room || 'LH-11'}</div>
-                  </>
-                )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          )}
+          {/* Whole-week grid - ported from GradeX's compact grid design: trims
+              trailing all-free columns, dashed empty cells, left-accent-border
+              filled cells. Headers are real weekdays (Mon-Fri), not GradeX's
+              "D1..D5" day-order labels - BITM has no day-order concept, every
+              week is just Monday-Friday. */}
+          {mobileView === 'grid' && (() => {
+            const subjectMap = {};
+            subjects.forEach((s, idx) => { subjectMap[s.code] = { ...s, colorIndex: idx }; });
 
+            let lastUsedSlot = -1;
+            for (let p = TIME_SLOTS.length - 1; p >= 0; p--) {
+              const used = DAYS.some((day) => timetable[day]?.[p]);
+              if (used) { lastUsedSlot = p; break; }
+            }
+            const visibleSlots = TIME_SLOTS.slice(0, lastUsedSlot + 1);
+            if (visibleSlots.length === 0) return null;
+
+            return (
+              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: '8px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '38px repeat(5, minmax(0, 1fr))', gap: '3px' }}>
+                  {/* Header: weekday labels */}
+                  <div />
+                  {DAYS.map((day) => (
+                    <div
+                      key={`h-${day}`}
+                      style={{
+                        textAlign: 'center',
+                        fontSize: '9px',
+                        fontWeight: 700,
+                        padding: '5px 0',
+                        borderRadius: '4px',
+                        background: 'var(--card-bg)',
+                        color: 'var(--text-secondary)',
+                        border: '1px solid var(--border-color)',
+                      }}
+                    >
+                      {day.slice(0, 3).toUpperCase()}
+                    </div>
+                  ))}
+
+                  {/* One row per time slot */}
+                  {visibleSlots.map((slot, periodIndex) => (
+                    <React.Fragment key={`r-${slot.period}`}>
+                      <div style={{ display: 'flex', alignItems: 'center', fontSize: '9px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                        {slot.time.split(' - ')[0]}
+                      </div>
+
+                      {DAYS.map((day) => {
+                        const cell = timetable[day]?.[periodIndex];
+                        const subject = cell ? subjectMap[cell.code] : null;
+
+                        if (!cell || !subject) {
+                          return (
+                            <div
+                              key={`c-${day}-${slot.period}`}
+                              style={{ minHeight: '42px', borderRadius: '4px', border: '1px dashed var(--border-color)' }}
+                            />
+                          );
+                        }
+
+                        const courseColor = getSubjectColor(subject.colorIndex);
+
+                        return (
+                          <div
+                            key={`c-${day}-${slot.period}`}
+                            title={`${subject.name}${cell.room ? ` · ${cell.room}` : ''}`}
+                            style={{
+                              minHeight: '42px',
+                              borderRadius: '4px',
+                              background: courseColor,
+                              border: '1px solid rgba(0,0,0,0.25)',
+                              borderLeft: `3px solid ${courseColor}`,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '1px',
+                              padding: '3px 2px',
+                              overflow: 'hidden',
+                            }}
+                          >
+                            <span style={{
+                              fontSize: '10px', fontWeight: 700, lineHeight: 1.2, textAlign: 'center',
+                              letterSpacing: '-0.01em', color: '#212529', overflow: 'hidden',
+                              display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', maxWidth: '100%',
+                            }}>
+                              {cell.code}{cell.isLab ? ' (LAB)' : ''}
+                            </span>
+                            {(cell.room || subject.room) && (
+                              <span style={{
+                                fontSize: '9px', fontWeight: 600, lineHeight: 1.1, textAlign: 'center',
+                                color: '#212529', opacity: 0.72, overflow: 'hidden', textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap', maxWidth: '100%',
+                              }}>
+                                {cell.room || subject.room}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* One day at a time - ported from GradeX's day-view cards (border,
+              padding, gap, NOW badge). Left out on purpose, since none of it
+              exists in BITM's data model: conflict-cell arrays (overlapping
+              batches), compensatory-class styling, the optional/cancelled-hour
+              toggle and its diagonal strike, and the flip transition between
+              days - all SRM-specific machinery this schedule doesn't have. The
+              NOW badge here is genuinely computed from TIME_SLOTS' own time
+              ranges against the real clock, not ported from anywhere. */}
           {mobileView === 'day' && (() => {
             const subjectMap = {};
             subjects.forEach((s, idx) => { subjectMap[s.code] = { ...s, colorIndex: idx }; });
             const dayName = DAYS[selectedDayIndex];
             const dayCells = timetable[dayName] || [];
 
+            const now = new Date();
+            const isViewingToday = getDefaultDayIndex() === selectedDayIndex && now.getDay() >= 1 && now.getDay() <= 5;
+            const nowMinutes = now.getHours() * 60 + now.getMinutes();
+            // "8:30 - 9:20" -> [510, 560]. TIME_SLOTS writes 24hr-ambiguous
+            // labels with no AM/PM suffix, but every hour that appears is
+            // fixed and known ahead of time: 8-11 are always the morning
+            // slots, 12 is already correct as noon, and 1-7 only ever appear
+            // in afternoon slots (there is no 1am-7am period on this sheet).
+            const parseSlotMinutes = (rangeLabel) => {
+              const toMinutes = (t) => {
+                let [h, m] = t.split(':').map(Number);
+                if (h >= 1 && h <= 7) h += 12;
+                return h * 60 + m;
+              };
+              const [startRaw, endRaw] = rangeLabel.split(' - ');
+              return [toMinutes(startRaw), toMinutes(endRaw)];
+            };
+
             return (
               <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-                {/* Day switcher */}
-                <div style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '6px 4px', marginBottom: '8px', flexShrink: 0,
-                }}>
+                {/* Day switcher - yellow chip + arrows, matching GradeX exactly */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '10px', flexShrink: 0 }}>
                   <button
                     type="button"
                     aria-label="Previous day"
                     onClick={() => setSelectedDayIndex((i) => (i - 1 + DAYS.length) % DAYS.length)}
-                    style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-primary)', cursor: 'pointer', flexShrink: 0 }}
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
                   </button>
+
                   <div style={{
-                    padding: '6px 16px', borderRadius: '999px', background: getDayColor(selectedDayIndex),
-                    fontSize: '13px', fontWeight: 700, color: '#000',
+                    fontSize: '13px', fontWeight: 700, background: '#FFFF00', color: '#000000',
+                    padding: '6px 12px', borderRadius: '4px', border: '1.5px solid var(--text-primary)',
+                    minWidth: '75px', textAlign: 'center',
                   }}>
                     {dayName}
                   </div>
+
                   <button
                     type="button"
                     aria-label="Next day"
                     onClick={() => setSelectedDayIndex((i) => (i + 1) % DAYS.length)}
-                    style={{ width: '30px', height: '30px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-primary)', cursor: 'pointer', flexShrink: 0 }}
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
                   </button>
                 </div>
 
-                {/* Stacked period cards for the selected day */}
-                <div style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {TIME_SLOTS.map((slot, idx) => {
-                    const cell = dayCells[idx];
+                {/* Stacked period cards */}
+                <div style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', display: 'flex', flexDirection: 'column', gap: '3px', paddingBottom: '4px' }}>
+                  {TIME_SLOTS.map((slot) => {
+                    const cell = dayCells[slot.period - 1];
                     const subject = cell ? subjectMap[cell.code] : null;
-                    const bgColor = subject ? getSubjectColor(subject.colorIndex) : null;
+                    const isEmpty = !cell || !subject;
+
+                    const [startMin, endMin] = parseSlotMinutes(slot.time);
+                    const isCurrentClass = !isEmpty && isViewingToday && nowMinutes >= startMin && nowMinutes < endMin;
+
+                    const backgroundColor = isEmpty ? 'var(--hover-bg)' : getSubjectColor(subject.colorIndex);
+                    const borderColor = isEmpty ? 'var(--border-color)' : 'var(--text-primary)';
+
                     return (
                       <div
                         key={slot.period}
                         style={{
-                          display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px',
-                          borderRadius: '8px', minHeight: '52px',
-                          background: subject ? bgColor : 'var(--hover-bg)',
-                          border: subject ? 'none' : '1px dashed var(--border-color)',
+                          background: backgroundColor,
+                          border: `1px solid ${borderColor}`,
+                          borderRadius: '4px',
+                          padding: isEmpty ? '4px 7px' : (isCurrentClass ? '7px 7px' : '5px 7px'),
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: isEmpty ? '1px' : '2px',
+                          flexShrink: 0,
+                          minHeight: isEmpty ? 'auto' : (isCurrentClass ? '60px' : '52px'),
+                          justifyContent: isEmpty ? 'flex-start' : 'space-between',
+                          position: 'relative',
+                          boxShadow: isCurrentClass ? `0 0 0 2px ${borderColor}40, 0 2px 8px ${borderColor}30` : undefined,
                         }}
                       >
-                        <div style={{ width: '64px', flexShrink: 0, fontSize: '10px', fontWeight: 700, color: subject ? '#000' : 'var(--text-secondary)', lineHeight: 1.3 }}>
-                          {slot.time.split(' - ')[0]}<br/>
-                          <span style={{ opacity: 0.65 }}>{slot.time.split(' - ')[1]}</span>
-                        </div>
-                        {subject ? (
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '13px', fontWeight: 700, color: '#000' }}>
-                              {subject.name}{cell.isLab ? ' (LAB)' : ''}
-                            </div>
-                            <div style={{ fontSize: '11px', color: 'rgba(0,0,0,0.7)', marginTop: '2px' }}>
-                              {cell.code} &bull; {cell.room || subject.room || 'LH-11'}
+                        {isCurrentClass && (
+                          <div style={{ position: 'absolute', right: '8px', top: '8px', zIndex: 2 }}>
+                            <div style={{
+                              padding: '2px 6px', borderRadius: '4px', background: 'var(--card-bg)',
+                              border: '1px solid var(--border-color)', color: 'var(--text-primary)',
+                              fontSize: '9px', fontWeight: 700, letterSpacing: '0.08em', lineHeight: 1,
+                              textTransform: 'uppercase', boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+                            }}>
+                              NOW
                             </div>
                           </div>
+                        )}
+
+                        <div style={{ marginBottom: isEmpty ? '0px' : '2px' }}>
+                          <div style={{
+                            fontSize: isEmpty ? '9px' : '11px',
+                            fontWeight: isEmpty ? 500 : 700,
+                            color: isEmpty ? 'var(--text-tertiary)' : '#212529',
+                            lineHeight: isEmpty ? '1.1' : '1.2',
+                            letterSpacing: isEmpty ? 'normal' : '0.3px',
+                          }}>
+                            {slot.time}
+                          </div>
+                        </div>
+
+                        {isEmpty ? (
+                          <div style={{ fontSize: '11px', fontWeight: 400, color: 'var(--text-tertiary)', fontStyle: 'italic', lineHeight: '1.15' }}>
+                            Free Hour
+                          </div>
                         ) : (
-                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Free period</div>
+                          <>
+                            <div style={{ fontSize: '12px', fontWeight: 600, color: '#212529', marginBottom: '2px', lineHeight: '1.15' }}>
+                              {subject.name}{cell.isLab ? ' (LAB)' : ''}
+                            </div>
+                            <div style={{ fontSize: '10px', color: 'rgba(0,0,0,0.6)', fontWeight: 500, lineHeight: '1.1' }}>
+                              {cell.code} &bull; {cell.room || subject.room || 'LH-11'}
+                            </div>
+                          </>
                         )}
                       </div>
                     );
