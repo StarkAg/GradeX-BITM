@@ -218,9 +218,13 @@ export default function Timetable() {
       )}
 
       {isMobile && (
-        <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100dvh - 240px)', overflow: 'hidden', paddingBottom: '80px' }}>
-          {/* View toggle: whole-week grid <-> one day at a time */}
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px', flexShrink: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          {/* Header row - matches GradeX: toggle (left), day switcher or "The
+              Week" label (center, absolutely positioned), Download (right).
+              No separate fixed bottom bar - Manage lives on the global
+              Subjects nav tab already, and stacking a second fixed bar here
+              was clipping the last card in the day view. */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '10px', flexShrink: 0, position: 'relative' }}>
             <button
               type="button"
               aria-label={mobileView === 'grid' ? 'Show one day at a time' : 'Show the whole week'}
@@ -241,6 +245,7 @@ export default function Timetable() {
                 color: 'var(--text-primary)',
                 cursor: 'pointer',
                 padding: 0,
+                flexShrink: 0,
               }}
             >
               {mobileView === 'grid' ? (
@@ -258,6 +263,64 @@ export default function Timetable() {
                   <rect x="14" y="3" width="7" height="7"></rect>
                   <rect x="14" y="14" width="7" height="7"></rect>
                   <rect x="3" y="14" width="7" height="7"></rect>
+                </svg>
+              )}
+            </button>
+
+            {/* Center: "The Week" label in grid mode, day switcher in day mode */}
+            {mobileView === 'grid' ? (
+              <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                The Week
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>
+                <button
+                  type="button"
+                  aria-label="Previous day"
+                  onClick={() => setSelectedDayIndex((i) => (i - 1 + DAYS.length) % DAYS.length)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-primary)', cursor: 'pointer', flexShrink: 0 }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                </button>
+
+                <div style={{ fontSize: '13px', fontWeight: 700, background: '#FFFF00', color: '#000000', padding: '6px 12px', borderRadius: '4px', border: '1.5px solid var(--text-primary)', minWidth: '75px', textAlign: 'center' }}>
+                  {DAYS[selectedDayIndex]}
+                </div>
+
+                <button
+                  type="button"
+                  aria-label="Next day"
+                  onClick={() => setSelectedDayIndex((i) => (i + 1) % DAYS.length)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-primary)', cursor: 'pointer', flexShrink: 0 }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </button>
+              </div>
+            )}
+
+            {/* Right: Download, icon-only - matches GradeX exactly */}
+            <button
+              onClick={downloadPDF}
+              disabled={loading}
+              style={{
+                padding: '6px 10px', fontSize: '11px', fontWeight: 600, borderRadius: '4px',
+                border: '1px solid var(--border-color)', background: 'var(--text-primary)', color: 'var(--bg-primary)',
+                cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.6 : 1, display: 'flex',
+                alignItems: 'center', justifyContent: 'center', gap: '4px', height: '32px', flexShrink: 0,
+              }}
+            >
+              {loading ? (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
+                  <line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line>
+                  <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+                  <line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line>
+                  <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+                </svg>
+              ) : (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
                 </svg>
               )}
             </button>
@@ -404,35 +467,7 @@ export default function Timetable() {
 
             return (
               <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-                {/* Day switcher - yellow chip + arrows, matching GradeX exactly */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '10px', flexShrink: 0 }}>
-                  <button
-                    type="button"
-                    aria-label="Previous day"
-                    onClick={() => setSelectedDayIndex((i) => (i - 1 + DAYS.length) % DAYS.length)}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-primary)', cursor: 'pointer', flexShrink: 0 }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-                  </button>
-
-                  <div style={{
-                    fontSize: '13px', fontWeight: 700, background: '#FFFF00', color: '#000000',
-                    padding: '6px 12px', borderRadius: '4px', border: '1.5px solid var(--text-primary)',
-                    minWidth: '75px', textAlign: 'center',
-                  }}>
-                    {dayName}
-                  </div>
-
-                  <button
-                    type="button"
-                    aria-label="Next day"
-                    onClick={() => setSelectedDayIndex((i) => (i + 1) % DAYS.length)}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-primary)', cursor: 'pointer', flexShrink: 0 }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                  </button>
-                </div>
-
+                {/* Day switcher now lives in the header row above (matches GradeX). */}
                 {/* Stacked period cards */}
                 <div style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', display: 'flex', flexDirection: 'column', gap: '3px', paddingBottom: '4px' }}>
                   {TIME_SLOTS.map((slot) => {
@@ -513,17 +548,21 @@ export default function Timetable() {
         </div>
       )}
 
-      {/* Mobile Fixed Bottom Buttons */}
+      {/* Manage button, below the schedule - normal document flow, not fixed,
+          so it can never clip/overlap the content above it. */}
       {isMobile && (
-        <div style={{ position: 'fixed', bottom: `calc(70px + env(safe-area-inset-bottom, 0px) + 8px)`, left: 0, right: 0, padding: '10px 16px', background: 'var(--bg-primary)', borderTop: '1px solid var(--border-color)', display: 'flex', gap: '10px', zIndex: 100 }}>
-          <Link to="/subjects" style={{ flex: 1, padding: '10px', fontSize: '12px', fontWeight: 500, border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-primary)', borderRadius: '8px', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            Manage
-          </Link>
-          <button onClick={downloadPDF} disabled={loading} style={{ flex: 1, padding: '10px', fontSize: '12px', fontWeight: 600, borderRadius: '8px', background: 'var(--text-primary)', color: 'var(--bg-primary)', border: 'none', cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-            {loading ? '...' : <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download</>}
-          </button>
-        </div>
+        <Link
+          to="/subjects"
+          style={{
+            flexShrink: 0, marginTop: '10px', padding: '10px', fontSize: '13px', fontWeight: 600,
+            border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-primary)',
+            borderRadius: '8px', textDecoration: 'none', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', gap: '6px',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Manage
+        </Link>
       )}
     </div>
   );
