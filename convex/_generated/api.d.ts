@@ -14,6 +14,7 @@ import type * as defaults from "../defaults.js";
 import type * as demo from "../demo.js";
 import type * as events from "../events.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as maintenance from "../maintenance.js";
 import type * as users from "../users.js";
 
 import type {
@@ -29,6 +30,7 @@ declare const fullApi: ApiFromModules<{
   demo: typeof demo;
   events: typeof events;
   "lib/auth": typeof lib_auth;
+  maintenance: typeof maintenance;
   users: typeof users;
 }>;
 
