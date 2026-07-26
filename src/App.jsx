@@ -3,6 +3,19 @@ import { useLocation, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth, useClerk, useUser } from '@clerk/clerk-react';
 import { useConvexAuth } from 'convex/react';
 import { Analytics } from '@vercel/analytics/react';
+
+// The Clerk<->Convex JWT handshake (verifying the "convex" token template
+// against auth.config.ts) has real network latency - this doesn't shorten it,
+// it just replaces the flash of plain gray text with a spinner so the wait
+// reads as "working" rather than "stuck".
+function AuthHandshakeSpinner({ label }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px', minHeight: '100vh', padding: '40px' }}>
+      <div style={{ width: '36px', height: '36px', border: '3px solid var(--border-color)', borderTopColor: 'var(--text-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+      <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{label}</div>
+    </div>
+  );
+}
 // Admin954 is gitignored (local-only, hidden admin panel) - it never exists in
 // the GitHub-cloned tree Vercel builds from. A literal import path gets resolved
 // by Rollup at build time regardless of `@vite-ignore` (that comment only quiets
@@ -411,7 +424,7 @@ export default function App() {
   }
 
   if (!authLoaded || !userLoaded) {
-    return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
+    return <AuthHandshakeSpinner label="Loading..." />;
   }
 
   if (location.pathname === '/auth/callback') {
@@ -419,7 +432,7 @@ export default function App() {
   }
 
   if (convexAuthLoading && isSignedIn) {
-    return <div style={{ padding: '40px', textAlign: 'center' }}>Connecting your account...</div>;
+    return <AuthHandshakeSpinner label="Connecting your account..." />;
   }
 
   if (!isSignedIn) {
