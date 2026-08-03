@@ -6,7 +6,7 @@ import { requireIdentity, nowTs } from "./lib/auth";
 function buildEmptyTimetable() {
   const timetable: Record<string, Array<{ code: string; room?: string; isLab?: boolean } | null>> = {};
   for (const day of TIMETABLE_DAYS) {
-    timetable[day] = Array(9).fill(null);
+    timetable[day] = Array(10).fill(null);
   }
   return timetable;
 }

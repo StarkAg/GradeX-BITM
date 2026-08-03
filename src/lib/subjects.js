@@ -1,22 +1,34 @@
-// Default BBA II A subjects
+// Mirrors convex/defaults.ts exactly - same BBA III A subjects, same 10 slots.
+// These two MUST stay in sync: this file is what every page renders during the
+// ~1s before the Convex snapshot arrives (and what buildLocalSnapshot serves
+// offline), while convex/defaults.ts is what actually gets seeded server-side.
+// When they drifted, the schedule painted a 9-column BBA II A timetable for a
+// second and then snapped to the real 10-column one - a visible layout jump -
+// and "Reset to default" in Subjects.jsx wrote the wrong timetable to Convex.
 export const DEFAULT_SUBJECTS = [
-  { name: 'Organizational Behavior', code: 'OB', room: 'LH-11', isLab: false },
-  { name: 'Marketing Management', code: 'MM', room: 'LH-11', isLab: false },
-  { name: 'Business Economics', code: 'BE', room: 'LH-11', isLab: false },
-  { name: 'Emotional Intelligence', code: 'EI', room: 'LH-11', isLab: false },
-  { name: 'Qualitative Data Analysis', code: 'QDA', room: 'LH-11', isLab: false },
-  { name: 'Web Application of Business', code: 'WAB', room: 'LH-11', isLab: false },
-  { name: 'Public Speaking & Creative Writing', code: 'PSCW', room: 'LH-11', isLab: false },
+  { name: 'Personality Development (PD)', code: 'PD', room: 'LH-11', isLab: false },
+  { name: 'Personality Development - Theory', code: 'PDTheory', room: 'LH-11', isLab: false },
+  { name: 'Environmental Science (ES)', code: 'ES', room: 'LH-32', isLab: false },
+  { name: 'Computerized Accounting (CA)', code: 'CA', room: 'Lab', isLab: true },
+  { name: 'Introduction to Financial System (IFS)', code: 'IFS', room: 'LH-11', isLab: false },
+  { name: 'Introduction to Business Analytics (IBA)', code: 'IBA', room: 'LH-11', isLab: false },
+  { name: 'Quantitative Techniques in Management (QTM)', code: 'QTM', room: 'LH-11', isLab: false },
+  { name: 'Research Methodology (RM)', code: 'RM', room: 'LH-11', isLab: false },
+  { name: 'Indian Knowledge System (IKS)', code: 'IKS', room: 'LH-11', isLab: false },
 ];
 
+// Slot index 0-9 maps to the printed time columns:
+// 0: 8:30-9:20   1: 9:30-10:20   2: 10:30-11:20   3: 11:30-12:20
+// 4: 12:30-1:20  5: 1:30-2:20    6: 2:30-3:20     7: 3:30-4:20
+// 8: 4:30-5:30   9: 5:30-6:30 (IKS runs both, tracked as two sessions)
 export const DEFAULT_TIMETABLE = {
-  Monday: [{ code: 'OB' }, { code: 'MM' }, { code: 'BE' }, { code: 'EI' }, { code: 'QDA', room: 'LH-02' }, null, null, null, null],
-  Tuesday: [{ code: 'WAB', room: 'LAB IIIB', isLab: true }, { code: 'WAB', room: 'LAB IIIB', isLab: true }, { code: 'BE' }, { code: 'PSCW', room: 'Lab', isLab: true }, { code: 'PSCW', room: 'LH-02', isLab: true }, null, null, null, null],
-  Wednesday: [{ code: 'EI' }, { code: 'OB' }, { code: 'BE' }, { code: 'MM' }, { code: 'MM', room: 'LH-02' }, null, null, null, null],
-  Thursday: [{ code: 'QDA' }, { code: 'QDA', room: 'LAB IIIB', isLab: true }, { code: 'PSCW' }, { code: 'OB' }, null, null, null, null, null],
-  Friday: [{ code: 'WAB' }, { code: 'MM' }, { code: 'WAB' }, { code: 'QDA' }, null, null, null, null, null],
-  Saturday: Array(9).fill(null),
-  Sunday: Array(9).fill(null),
+  Monday: [{ code: 'PD' }, { code: 'PD' }, { code: 'RM' }, { code: 'CA' }, { code: 'ES', room: 'LH-32' }, null, null, null, { code: 'IKS' }, { code: 'IKS' }],
+  Tuesday: [{ code: 'RM' }, { code: 'IFS' }, { code: 'QTM' }, { code: 'CA' }, null, null, null, null, null, null],
+  Wednesday: [{ code: 'PDTheory' }, { code: 'ES', room: 'LH-32' }, { code: 'QTM' }, { code: 'IBA' }, null, null, null, null, null, null],
+  Thursday: [{ code: 'IFS' }, { code: 'IBA' }, { code: 'CA', room: 'Lab', isLab: true }, { code: 'CA', room: 'Lab', isLab: true }, null, null, null, null, null, null],
+  Friday: [{ code: 'RM' }, { code: 'IBA' }, { code: 'IFS' }, { code: 'QTM' }, { code: 'PDTheory', room: 'LH-32' }, null, null, null, null, null],
+  Saturday: Array(10).fill(null),
+  Sunday: Array(10).fill(null),
 };
 
 // Color palette - Lightened luxury palette (28 colors, safe to cycle, low visual fatigue)

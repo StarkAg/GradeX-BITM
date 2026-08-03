@@ -57,7 +57,7 @@
   border: 1px solid var(--border-color);
   background: var(--card-bg);
   color: var(--text-primary);
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
   font-weight: 600;
   transition: all 0.2s ease;
@@ -86,7 +86,7 @@
   border: 1px solid var(--border-color);
   background: var(--card-bg);
   color: var(--text-primary);
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
   font-weight: 600;
   transition: all 0.2s ease;
@@ -107,7 +107,7 @@
 .timetable-form {
   background: var(--card-bg);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 1.5rem;
   margin-bottom: 2rem;
 }
@@ -140,7 +140,7 @@
   border: 1px solid var(--border-color);
   background: var(--bg);
   color: var(--text-primary);
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 0.9rem;
 }
 
@@ -159,7 +159,7 @@
   border: 1px solid var(--border-color);
   background: var(--card-bg);
   color: var(--text-primary);
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
   font-weight: 600;
   transition: all 0.2s ease;
@@ -195,7 +195,7 @@
 .timetable-course-card {
   background: var(--card-bg);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 1rem;
   display: flex;
   flex-direction: column;
@@ -312,7 +312,7 @@
 
 .timetable-grid {
   display: grid;
-  grid-template-columns: 90px repeat(9, minmax(80px, 1fr));
+  grid-template-columns: 80px repeat(10, minmax(0, 1fr));
   gap: 0;
   width: 100%;
   max-width: 100%;
@@ -327,10 +327,10 @@
 .timetable-header-cell {
   background: #495057;
   color: white;
-  padding: 6px 3px;
+  padding: 8px 4px;
   text-align: center;
   font-weight: 600;
-  font-size: 0.6rem;
+  font-size: 0.7rem;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -368,12 +368,12 @@
 }
 
 .timetable-day-label {
-  /* Background color is set inline via getDayColor() */
+  background: #FFFF00;
   color: #000000;
-  padding: 8px 4px;
+  padding: 12px 8px;
   text-align: center;
   font-weight: 700;
-  font-size: 0.65rem;
+  font-size: 0.8rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -383,20 +383,16 @@
   border: 1px solid #000000;
   box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
   box-sizing: border-box;
-  width: 90px;
-  min-width: 90px;
-  max-width: 90px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .timetable-cell {
-  min-height: 55px;
-  padding: 4px 3px;
+  /* Make timetable cells slightly wider than tall (near-square) */
+  aspect-ratio: 35 / 30;
+  min-height: 80px;
+  padding: 6px 4px;
   border: 1px solid #000000;
   background-color: #ffffff;
-  transition: all 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -430,21 +426,23 @@
 }
 
 .timetable-course-name {
-  font-size: 0.75rem;
+  font-size: 0.6rem;
   font-weight: 600;
   color: #212529;
-  line-height: 1.25;
+  line-height: 1.1;
   word-wrap: break-word;
   overflow-wrap: break-word;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
+  /* Removed truncation to display full course names */
 }
 
 .timetable-room-number {
-  font-size: 0.65rem;
+  font-size: 0.55rem;
   color: #495057;
   font-weight: 500;
   margin-top: auto;
-  padding-top: 3px;
+  padding-top: 2px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -472,29 +470,29 @@
   .timetable-container {
     padding: 0.75rem;
   }
-  
+
   .timetable-cell {
     min-height: 70px;
     padding: 5px 3px;
   }
-  
+
   .timetable-course-name {
     font-size: 0.55rem;
   }
-  
+
   .timetable-room-number {
     font-size: 0.5rem;
   }
-  
+
   .timetable-header-cell {
     padding: 6px 3px;
     font-size: 0.65rem;
   }
-  
+
   .timetable-time-range {
     font-size: 0.5rem;
   }
-  
+
   .timetable-period-number {
     font-size: 0.7rem;
   }
@@ -504,121 +502,37 @@
   .timetable-container {
     padding: 0.5rem;
   }
-  
+
   .timetable-cell {
     min-height: 60px;
     padding: 4px 2px;
   }
-  
+
   .timetable-course-name {
     font-size: 0.5rem;
     /* Full course names displayed - no truncation */
   }
-  
+
   .timetable-room-number {
     font-size: 0.45rem;
   }
-  
+
   .timetable-header-cell {
     padding: 5px 2px;
     font-size: 0.6rem;
   }
-  
+
   .timetable-time-range {
     font-size: 0.45rem;
   }
-  
+
   .timetable-period-number {
     font-size: 0.65rem;
   }
-  
+
   .timetable-day-label {
     padding: 10px 6px;
     font-size: 0.7rem;
-    width: 90px;
-    min-width: 90px;
-    max-width: 90px;
-  }
-}
-
-/* Mobile responsive */
-@media (max-width: 768px) {
-  .timetable-container {
-    padding: 0.5rem;
-    overflow-x: auto;
-  }
-  
-  .timetable-grid {
-    grid-template-columns: 60px repeat(9, minmax(60px, 1fr));
-    min-width: 600px;
-  }
-  
-  .timetable-cell {
-    min-height: 50px;
-    padding: 3px 2px;
-  }
-  
-  .timetable-course-name {
-    font-size: 0.5rem;
-  }
-  
-  .timetable-room-number {
-    font-size: 0.4rem;
-  }
-  
-  .timetable-header-cell {
-    padding: 4px 2px;
-    font-size: 0.5rem;
-  }
-  
-  .timetable-time-range {
-    font-size: 0.4rem;
-  }
-  
-  .timetable-period-number {
-    font-size: 0.55rem;
-  }
-  
-  .timetable-day-label {
-    padding: 6px 3px;
-    font-size: 0.55rem;
-    width: 55px;
-    min-width: 55px;
-    max-width: 55px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  
-  .timetable-header h1 {
-    font-size: 1.4rem;
-  }
-  
-  .timetable-title {
-    font-size: 1rem;
-  }
-  
-  .timetable-subtitle {
-    font-size: 0.65rem;
-  }
-}
-
-@media (max-width: 480px) {
-  .timetable-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .timetable-controls {
-    align-items: stretch;
-  }
-  
-  .timetable-actions {
-    justify-content: center;
-  }
-  
-  .timetable-grid {
-    min-width: 500px;
   }
 }
 
@@ -642,4 +556,3 @@
     transform: translate(-50%, -50%) scale(1.2);
   }
 }
-

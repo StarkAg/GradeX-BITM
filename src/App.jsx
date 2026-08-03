@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth, useClerk, useUser } from '@clerk/clerk-react';
-import { useConvexAuth } from 'convex/react';
+import { useConvexAuth, useQuery } from 'convex/react';
+import { api } from '../convex/_generated/api';
 import { Analytics } from '@vercel/analytics/react';
 import { APP_BUILD_DATE, APP_VERSION } from './version';
 import {
@@ -9,11 +10,14 @@ import {
   publishConvexAvailability,
   readConvexAvailability,
 } from './lib/convexAvailability';
+import { buildRefreshUrl, hardRefreshApp } from './lib/appUpdate';
 
-// The Clerk<->Convex JWT handshake (verifying the "convex" token template
-// against auth.config.ts) has real network latency - this doesn't shorten it,
-// it just replaces the flash of plain gray text with a spinner so the wait
-// reads as "working" rather than "stuck".
+// Clerk hydrating its session has real (usually sub-second, cache-backed)
+// latency - this replaces the flash of plain gray text with a spinner so the
+// wait reads as "working" rather than "stuck". It no longer gates on the
+// Convex reachability probe or the Clerk<->Convex JWT handshake; those run in
+// the background so the app shell isn't held hostage by Convex being slow or
+// unreachable (see `mainScreen` below).
 function AuthHandshakeSpinner({ label }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px', minHeight: '100vh', padding: '40px' }}>
@@ -47,6 +51,7 @@ import DemoLogin from './components/DemoLogin';
 import FacultyAttendancePanel from './components/FacultyAttendancePanel';
 import StudentDemoView from './components/StudentDemoView';
 import PWAUpdatePrompt from './components/PWAUpdatePrompt';
+import OfflineIndicator from './components/OfflineIndicator';
 import {
   useCurrentProfile,
   useLogSocialClick,
@@ -57,6 +62,7 @@ import {
   clearLocalAuthCache,
   getClerkDisplayName,
   getClerkUsername,
+  hasCachedIdentity,
   splitDisplayName,
   syncClerkUserToLocalStorage,
 } from './lib/clerk';
@@ -75,6 +81,9 @@ const NAV_ITEMS = [
 ];
 const AUDIO_URL = '/back-in-black.mp3';
 const CONVEX_HEALTH_POLL_MS = 20 * 1000;
+// How long to wait for Clerk before falling back to cached data. Only reached
+// when the browser still reports itself online but Clerk's CDN is unreachable.
+const AUTH_LOAD_TIMEOUT_MS = 6 * 1000;
 const SPLASH_PROGRESS_INTERVAL_MS = 20;
 const SPLASH_PROGRESS_STEP = 4;
 const SPLASH_EXIT_DELAY_MS = 150;
@@ -178,9 +187,65 @@ export default function App() {
   const [savingName, setSavingName] = useState(false);
   const [convexConfigError, setConvexConfigError] = useState('');
   const [isMobile, setIsMobile] = useState(false);
+  const [isForceUpdating, setIsForceUpdating] = useState(false);
+  const [forceUpdateTargetVersion, setForceUpdateTargetVersion] = useState('');
+  const [tabVisible, setTabVisible] = useState(() => (
+    typeof document === 'undefined' ? true : document.visibilityState === 'visible'
+  ));
   const audioRef = useRef(null);
   const syncedUserRef = useRef(null);
+  const forceUpdateInFlightRef = useRef(null);
   const location = useLocation();
+
+  // Skipped until the Convex probe says the backend is actually reachable, so
+  // an offline launch never blocks on this query.
+  const forceUpdateVersion = useQuery(
+    api.appSettings.getForceUpdateVersion,
+    convexStatusChecked && isConvexAvailable ? {} : 'skip'
+  );
+
+  useEffect(() => {
+    const handleVisibility = () => setTabVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
+
+  const [isOnline, setIsOnline] = useState(() => (
+    typeof navigator === 'undefined' ? true : navigator.onLine !== false
+  ));
+
+  useEffect(() => {
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
+
+  // Clerk loads its SDK from its own CDN, so offline it fails outright and
+  // `authLoaded` never flips - the app would sit on "Loading..." forever.
+  // After this grace period we stop waiting and, if a previous session left an
+  // identity behind, render from the cached snapshot instead.
+  const [authTimedOut, setAuthTimedOut] = useState(false);
+
+  useEffect(() => {
+    if (authLoaded && userLoaded) {
+      setAuthTimedOut(false);
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => setAuthTimedOut(true), AUTH_LOAD_TIMEOUT_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [authLoaded, userLoaded]);
+
+  // Offline with a known user: skip the auth gate entirely rather than block on
+  // a handshake that cannot complete. Don't wait out the timeout when the
+  // browser already knows it is offline.
+  const offlineCachedMode =
+    !(authLoaded && userLoaded) && hasCachedIdentity() && (!isOnline || authTimedOut);
 
   useEffect(() => {
     console.log(`%cGradeX BITM ${APP_VERSION}`, 'color: #3b82f6; font-weight: bold; font-size: 16px; padding: 4px;');
@@ -249,11 +314,85 @@ export default function App() {
     const checkMobile = () => {
       setIsMobile(window.innerWidth <= 768);
     };
-    
+
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // Force update: an admin sets appSettings.force_update_version in Convex and
+  // every client older than it wipes its caches/service worker and reloads
+  // once. Only runs while the tab is visible so it never fires in a background
+  // tab the user isn't looking at.
+  useEffect(() => {
+    if (forceUpdateVersion === undefined) return;
+    if (!forceUpdateVersion) return;
+    if (!tabVisible) return;
+
+    const currentVersion = APP_VERSION.replace('v', '').trim();
+    const requiredVersion = String(forceUpdateVersion).replace('v', '').trim();
+
+    const compareSemver = (a, b) => {
+      const pa = a.split('.').map(Number);
+      const pb = b.split('.').map(Number);
+      for (let i = 0; i < 3; i += 1) {
+        if ((pa[i] || 0) < (pb[i] || 0)) return -1;
+        if ((pa[i] || 0) > (pb[i] || 0)) return 1;
+      }
+      return 0;
+    };
+
+    const needUpdate = compareSemver(currentVersion, requiredVersion) < 0;
+
+    const lastProcessedVersion = localStorage.getItem('gradex_last_force_update');
+    if (!needUpdate && lastProcessedVersion === requiredVersion) return;
+
+    const forceUpdateAttemptKey = `${currentVersion}->${requiredVersion}`;
+    const previousAttemptKey = localStorage.getItem('gradex_force_update_attempt');
+
+    // If a cached bundle survives the refresh, don't trap the user in an
+    // infinite "Updating..." reload loop - give up and keep running the current
+    // build. A later release changes this key and gets a fresh attempt.
+    if (needUpdate && previousAttemptKey === forceUpdateAttemptKey) {
+      console.warn(`[App] Force update already attempted for ${forceUpdateAttemptKey}; continuing with the current bundle.`);
+      forceUpdateInFlightRef.current = null;
+      return;
+    }
+
+    try {
+      if (!needUpdate && sessionStorage.getItem('gradex_force_update_checked') === requiredVersion) return;
+    } catch (_) {}
+
+    if (needUpdate) {
+      if (forceUpdateInFlightRef.current === requiredVersion) return;
+      forceUpdateInFlightRef.current = requiredVersion;
+      localStorage.setItem('gradex_force_update_attempt', forceUpdateAttemptKey);
+      setForceUpdateTargetVersion(`v${requiredVersion}`);
+      setIsForceUpdating(true);
+
+      setTimeout(() => {
+        hardRefreshApp({
+          requestServiceWorkerUpdate: true,
+          clearCacheStorage: true,
+          clearServiceWorkers: true,
+          clearIndexedDb: true,
+          clearLocalStorage: false,
+          clearSessionStorage: false,
+        }).catch((error) => {
+          console.warn('[App] Forced refresh failed, falling back to hard reload:', error);
+          window.location.replace(buildRefreshUrl(window.location.href));
+        });
+      }, 600);
+    } else {
+      forceUpdateInFlightRef.current = null;
+      setForceUpdateTargetVersion('');
+      localStorage.removeItem('gradex_force_update_attempt');
+      localStorage.setItem('gradex_last_force_update', requiredVersion);
+      try {
+        sessionStorage.setItem('gradex_force_update_checked', requiredVersion);
+      } catch (_) {}
+    }
+  }, [forceUpdateVersion, tabVisible]);
 
   useEffect(() => {
     if (!authLoaded || !userLoaded) return;
@@ -463,10 +602,12 @@ export default function App() {
     }
   };
 
-  // Show splash screen
-  if (showSplash) {
-  return (
-        <div 
+  // Splash is an overlay, not a blocking early-return: the real screen underneath
+  // (auth, main app, etc.) mounts and starts loading its own data at the same
+  // time, so by the time the splash fades there's nothing left to wait for -
+  // matching how the main GradeX app runs its splash.
+  const splashScreen = (
+        <div
           className="splash-screen"
           style={{
             position: 'fixed',
@@ -480,6 +621,9 @@ export default function App() {
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 9999,
+            opacity: (showSplash || isForceUpdating) ? 1 : 0,
+            transition: 'opacity 0.5s ease-out',
+            pointerEvents: (showSplash || isForceUpdating) ? 'auto' : 'none',
             overflow: 'hidden'
           }}
         >
@@ -541,7 +685,9 @@ export default function App() {
               textTransform: 'uppercase',
               opacity: 0.8
         }}>
-            {loadingText}
+            {isForceUpdating
+              ? `Updating GradeX BITM to ${forceUpdateTargetVersion || 'the latest version'}...`
+              : loadingText}
             <span style={{ animation: 'blink 1s infinite' }}>|</span>
           </div>
 
@@ -566,49 +712,43 @@ export default function App() {
         <div style={{ position: 'absolute', bottom: '20px', left: '20px', width: '40px', height: '40px', borderBottom: '2px solid var(--splash-overlay)', borderLeft: '2px solid var(--splash-overlay)' }} />
         <div style={{ position: 'absolute', bottom: '20px', right: '20px', width: '40px', height: '40px', borderBottom: '2px solid var(--splash-overlay)', borderRight: '2px solid var(--splash-overlay)' }} />
         </div>
-    );
-  }
+  );
 
-  if (!authLoaded || !userLoaded) {
-    return <AuthHandshakeSpinner label="Loading..." />;
-  }
+  // Everything below picks what renders under the splash overlay. It does not
+  // block on Convex reachability or the Clerk<->Convex JWT handshake - like the
+  // main GradeX app, the shell mounts as soon as Clerk knows who's signed in.
+  // Convex-backed data (currentProfile, queries in child routes, etc.) already
+  // resolves as `undefined` until it's ready via the `enabled` flags above, so
+  // those widgets show their own loading/offline state instead of the whole app
+  // refusing to open. OfflineIndicator (rendered below) surfaces connectivity.
+  const mainScreen = (() => {
+    // offlineCachedMode means Clerk can't load (no network) but we know who the
+    // user was, so fall through and render everything from the cached snapshot.
+    if ((!authLoaded || !userLoaded) && !offlineCachedMode) {
+      return <AuthHandshakeSpinner label="Loading..." />;
+    }
 
-  if (location.pathname === '/auth/callback') {
-    return <AuthRedirectCallback />;
-  }
+    if (location.pathname === '/auth/callback') {
+      return <AuthRedirectCallback />;
+    }
 
-  if (!isSignedIn) {
-    return <AuthPage onAuthSuccess={handleAuthSuccess} />;
-  }
+    if (!isSignedIn && !offlineCachedMode) {
+      return <AuthPage onAuthSuccess={handleAuthSuccess} />;
+    }
 
-  if (!convexStatusChecked) {
-    return <AuthHandshakeSpinner label="Checking Convex..." />;
-  }
+    // Only hold the app for a genuine misconfiguration (Convex reachable but
+    // rejecting the Clerk session) - not for "still connecting" or "offline".
+    if (convexConfigError && isConvexAvailable) {
+      return (
+        <ConvexGate
+          message={convexConfigError}
+          onLogout={handleLogout}
+        />
+      );
+    }
 
-  if (!isConvexAvailable) {
+    // Main app
     return (
-      <ConvexGate
-        message="Convex is unreachable right now, so GradeX BITM is holding the app before any student data is opened. Check your connection or Convex deployment, then reload."
-        onLogout={handleLogout}
-      />
-    );
-  }
-
-  if (convexAuthLoading) {
-    return <AuthHandshakeSpinner label="Connecting your account..." />;
-  }
-
-  if (!convexAuthenticated) {
-    return (
-      <ConvexGate
-        message={convexConfigError || 'Clerk sign-in completed, but Convex has not accepted the session yet. Activate the Clerk Convex integration and the `convex` token template in Clerk Dashboard, then reload.'}
-        onLogout={handleLogout}
-      />
-    );
-  }
-
-  // Main app
-  return (
     <>
       <div className="app-container" style={{ opacity: 1, transition: 'opacity 0.5s ease-in' }}>
       <header className="app-header single" style={{ 
@@ -798,7 +938,6 @@ export default function App() {
       </div>
         <audio ref={audioRef} preload="none" onEnded={() => setIsPlaying(false)} />
       <Analytics />
-      <PWAUpdatePrompt />
 
         {/* Name Input Modal */}
         {showNameModal && (
@@ -991,6 +1130,23 @@ export default function App() {
           }
         `}</style>
     </div>
+    </>
+    );
+  })();
+
+  return (
+    <>
+      <OfflineIndicator />
+      {/* Mounted at the top level, outside every auth/Convex gate: this is the
+          only thing that registers the service worker, so keeping it inside the
+          signed-in tree meant a user sitting on the login screen (or any
+          loading/error gate) never installed one - no offline, and no update
+          pipeline either. */}
+      <PWAUpdatePrompt />
+      {(showSplash || isForceUpdating) && splashScreen}
+      <div style={{ opacity: (showSplash || isForceUpdating) ? 0 : 1, transition: 'opacity 0.5s ease-in' }}>
+        {mainScreen}
+      </div>
     </>
   );
 }

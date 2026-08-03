@@ -14,7 +14,8 @@ const TIME_SLOTS = [
   '1:30 - 2:20',
   '2:30 - 3:20',
   '3:30 - 4:20',
-  '5:30 - 6:20',
+  '4:30 - 5:30',
+  '5:30 - 6:30',
 ];
 
 function formatDateKey(date) {
@@ -62,7 +63,7 @@ function buildTodayClasses(subjects, timetable, dayName) {
 }
 
 export default function Home() {
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [dailyAttendance, setDailyAttendance] = useState({});
   const [savingCode, setSavingCode] = useState(null);
   const [viewOnly, setViewOnly] = useState(false);

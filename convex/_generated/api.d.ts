@@ -10,6 +10,7 @@
 
 import type * as academics from "../academics.js";
 import type * as admin from "../admin.js";
+import type * as appSettings from "../appSettings.js";
 import type * as defaults from "../defaults.js";
 import type * as demo from "../demo.js";
 import type * as events from "../events.js";
@@ -26,6 +27,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   academics: typeof academics;
   admin: typeof admin;
+  appSettings: typeof appSettings;
   defaults: typeof defaults;
   demo: typeof demo;
   events: typeof events;

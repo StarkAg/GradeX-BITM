@@ -106,6 +106,16 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_key", ["key"]),
 
+  // Admin-settable key/value settings. `value` is a plain string (JSON-encoded
+  // when a setting needs structure) so new settings never require a schema
+  // change. Currently only "force_update_version" - see convex/appSettings.ts.
+  appSettings: defineTable({
+    key: v.string(),
+    value: v.string(),
+    updatedAt: v.number(),
+    createdAt: v.number(),
+  }).index("by_key", ["key"]),
+
   groupgridVisits: defineTable({
     userId: v.optional(v.string()),
     route: v.optional(v.string()),

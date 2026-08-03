@@ -124,6 +124,35 @@ export default defineConfig({
               cacheableResponse: { statuses: [0, 200] },
             },
           },
+          // Clerk ships its SDK from its own CDN at runtime. Without this the
+          // script is unavailable on an offline cold start, auth never
+          // finishes loading, and the app hangs on the "Loading..." spinner
+          // forever. StaleWhileRevalidate so it still refreshes when online.
+          // (GradeX needs no equivalent - it doesn't use Clerk.)
+          {
+            urlPattern: /^https:\/\/.*\.clerk\.accounts\.dev\/.*/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'clerk-sdk',
+              expiration: {
+                maxEntries: 20,
+                maxAgeSeconds: 60 * 60 * 24 * 30,
+              },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            urlPattern: /^https:\/\/img\.clerk\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'clerk-images',
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 60 * 60 * 24 * 30,
+              },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
           {
             urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|woff|woff2|ttf|otf|ico)$/i,
             handler: 'CacheFirst',

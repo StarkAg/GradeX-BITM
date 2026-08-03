@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import html2canvas from 'html2canvas';
 import { Link } from 'react-router-dom';
 import { useAcademicSnapshot, useCurrentProfile } from '../lib/academic-data';
-import { DEFAULT_TIMETABLE, getSubjectColor, getDayColor } from '../lib/subjects';
+import { DEFAULT_TIMETABLE, getSubjectColor } from '../lib/subjects';
 import './Timetable.css';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -15,7 +15,8 @@ const TIME_SLOTS = [
   { period: 6, time: '1:30 - 2:20' },
   { period: 7, time: '2:30 - 3:20' },
   { period: 8, time: '3:30 - 4:20' },
-  { period: 9, time: '5:30 - 6:20' },
+  { period: 9, time: '4:30 - 5:30' },
+  { period: 10, time: '5:30 - 6:30' },
 ];
 
 function TimetableGrid({ subjects, timetable }) {
@@ -33,12 +34,13 @@ function TimetableGrid({ subjects, timetable }) {
         <div className="timetable-header-cell">Time</div>
         {TIME_SLOTS.map((slot) => (
           <div key={slot.period} className="timetable-header-cell">
-            <div className="timetable-time-range" style={{ fontSize: '0.55rem' }}>{slot.time}</div>
+            <div className="timetable-period-number">Slot {slot.period}</div>
+            <div className="timetable-time-range">{slot.time}</div>
           </div>
         ))}
-        {DAYS.map((day, dayIdx) => (
+        {DAYS.map((day) => (
           <div key={day} className="timetable-day-row">
-            <div className="timetable-day-label" style={{ backgroundColor: getDayColor(dayIdx) }}>{day}</div>
+            <div className="timetable-day-label">{day}</div>
             {TIME_SLOTS.map((slot, periodIndex) => {
               const cell = timetable[day]?.[periodIndex];
               const isEmpty = !cell;
@@ -77,7 +79,12 @@ export default function Timetable() {
   const profile = useCurrentProfile();
   const [subjects, setSubjects] = useState([]);
   const [timetable, setTimetable] = useState(DEFAULT_TIMETABLE);
-  const [isMobile, setIsMobile] = useState(false);
+  // Resolved on the first render, not in an effect. The desktop grid below
+  // renders immediately (timetable defaults to DEFAULT_TIMETABLE rather than
+  // waiting on a fetch), so starting this at `false` painted the full-width
+  // desktop table on mobile for one frame - a sideways-scrolling flash before
+  // the effect snapped it over to the week view.
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [loading, setLoading] = useState(false);
   const timetableRef = useRef(null);
 

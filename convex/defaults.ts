@@ -19,16 +19,16 @@ export const DEFAULT_SUBJECTS = [
   { name: "Indian Knowledge System (IKS)", code: "IKS", room: "LH-11", isLab: false },
 ] as const;
 
-// Slot index 0-8 maps to the printed time columns:
+// Slot index 0-9 maps to the printed time columns:
 // 0: 8:30-9:20   1: 9:30-10:20   2: 10:30-11:20   3: 11:30-12:20
 // 4: 12:30-1:20  5: 1:30-2:20    6: 2:30-3:20     7: 3:30-4:20
-// 8: 4:30-6:20 (a 2-hour block)
+// 8: 4:30-5:30   9: 5:30-6:30 (IKS runs both, tracked as two sessions)
 export const DEFAULT_TIMETABLE: Record<string, Array<{ code: string; room?: string; isLab?: boolean } | null>> = {
-  Monday: [{ code: "PD" }, { code: "PD" }, { code: "RM" }, { code: "CA" }, { code: "ES", room: "LH-32" }, null, null, null, { code: "IKS" }],
-  Tuesday: [{ code: "RM" }, { code: "IFS" }, { code: "QTM" }, { code: "CA" }, null, null, null, null, null],
-  Wednesday: [{ code: "PDTheory" }, { code: "ES", room: "LH-32" }, { code: "QTM" }, { code: "IBA" }, null, null, null, null, null],
-  Thursday: [{ code: "IFS" }, { code: "IBA" }, { code: "CA", room: "Lab", isLab: true }, { code: "CA", room: "Lab", isLab: true }, null, null, null, null, null],
-  Friday: [{ code: "RM" }, { code: "IBA" }, { code: "IFS" }, { code: "QTM" }, { code: "PDTheory", room: "LH-32" }, null, null, null, null],
+  Monday: [{ code: "PD" }, { code: "PD" }, { code: "RM" }, { code: "CA" }, { code: "ES", room: "LH-32" }, null, null, null, { code: "IKS" }, { code: "IKS" }],
+  Tuesday: [{ code: "RM" }, { code: "IFS" }, { code: "QTM" }, { code: "CA" }, null, null, null, null, null, null],
+  Wednesday: [{ code: "PDTheory" }, { code: "ES", room: "LH-32" }, { code: "QTM" }, { code: "IBA" }, null, null, null, null, null, null],
+  Thursday: [{ code: "IFS" }, { code: "IBA" }, { code: "CA", room: "Lab", isLab: true }, { code: "CA", room: "Lab", isLab: true }, null, null, null, null, null, null],
+  Friday: [{ code: "RM" }, { code: "IBA" }, { code: "IFS" }, { code: "QTM" }, { code: "PDTheory", room: "LH-32" }, null, null, null, null, null],
 };
 
 export const TIMETABLE_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;

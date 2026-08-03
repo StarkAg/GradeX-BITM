@@ -52,6 +52,19 @@ export function syncClerkUserToLocalStorage(user) {
   return bridgeUser;
 }
 
+// True when a previous signed-in session left an identity behind. Clerk fetches
+// its SDK from its own CDN, so on an offline cold start it can never load and
+// `isSignedIn` stays false forever - without this the app would sit on its
+// spinner rather than showing cached data. Signing out clears these keys via
+// clearLocalAuthCache below, so this stays false for genuinely signed-out users.
+export function hasCachedIdentity() {
+  try {
+    return Boolean(localStorage.getItem('gradex_user_id'));
+  } catch {
+    return false;
+  }
+}
+
 export function clearLocalAuthCache(includeAcademicData = false) {
   const keys = [
     'gradex_user_id',

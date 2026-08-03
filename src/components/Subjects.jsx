@@ -15,7 +15,8 @@ const TIME_SLOTS = [
   { period: 6, time: '1:30 - 2:20' },
   { period: 7, time: '2:30 - 3:20' },
   { period: 8, time: '3:30 - 4:20' },
-  { period: 9, time: '5:30 - 6:20' },
+  { period: 9, time: '4:30 - 5:30' },
+  { period: 10, time: '5:30 - 6:30' },
 ];
 
 export default function Subjects() {
