@@ -27,23 +27,35 @@ const manifestPayload = {
   orientation: 'portrait-primary',
   categories: ['education', 'productivity'],
   lang: 'en',
+  // Cyan arc reactor, BITM-only. GradeX ships the white arc-reactor*.png, and
+  // when both PWAs were installed the home-screen icons were byte-identical.
+  // Same silhouette, recoloured - only the colour tells them apart.
+  // `any` and `maskable` are deliberately separate entries: the maskable file
+  // is padded into the centre ~62% safe zone, because launchers crop maskable
+  // icons to a circle/squircle and would have clipped the full-bleed artwork.
   icons: [
     {
-      src: '/arc-reactor.png',
+      src: '/icon-bitm-32.png',
       sizes: '32x32',
       type: 'image/png',
     },
     {
-      src: '/arc-reactor1.png',
+      src: '/icon-bitm-192.png',
       sizes: '192x192',
       type: 'image/png',
-      purpose: 'any maskable',
+      purpose: 'any',
     },
     {
-      src: '/arc-reactor1.png',
+      src: '/icon-bitm-512.png',
       sizes: '512x512',
       type: 'image/png',
-      purpose: 'any maskable',
+      purpose: 'any',
+    },
+    {
+      src: '/icon-bitm-maskable-512.png',
+      sizes: '512x512',
+      type: 'image/png',
+      purpose: 'maskable',
     },
   ],
 }
@@ -91,7 +103,15 @@ export default defineConfig({
       injectRegister: false,
       registerType: 'autoUpdate',
       manifestFilename: 'manifest.webmanifest',
-      includeAssets: ['arc-reactor.png', 'arc-reactor1.png', 'arc-favicon.svg'],
+      includeAssets: [
+        'arc-reactor.png',
+        'arc-reactor1.png',
+        'arc-favicon.svg',
+        'icon-bitm-32.png',
+        'icon-bitm-192.png',
+        'icon-bitm-512.png',
+        'icon-bitm-maskable-512.png',
+      ],
       manifest: manifestPayload,
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,ttf,otf,json,webmanifest}'],
