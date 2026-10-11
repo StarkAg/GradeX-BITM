@@ -43,6 +43,8 @@ src/
   lib/attendance-codes.js  per-hour attendance keys (shared by Home and Calendar)
   lib/subjects.js       client copy of convex/defaults.ts - keep the two in sync
 tests/                  vitest: Convex logic, attendance keys, offline queue
+android/                Capacitor Android shell around the live site
+capacitor-shell/        the one page the shell shows if it has never been online
 ```
 
 ## Running it
@@ -70,6 +72,24 @@ build, commit, push to `main` (Vercel deploys), then `npm run deploy:convex`.
   `convex/` is committed and the checkout equals `origin/main`.
 - Never put anything private in `public/`. Vite copies that whole folder into
   every build, ignored files included.
+
+## Android app
+
+The Android app is a thin Capacitor shell (as in GradeX): it opens the live
+site, `https://bitm.gradex.bond`, in a full-screen WebView. Releasing the
+website updates the app; the APK only needs rebuilding when the icon, name or
+Capacitor itself changes.
+
+```bash
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17
+npm run app:android        # android/app/build/outputs/apk/release/app-release.apk
+npm run app:android:usb    # same, then installs on a phone connected by USB
+```
+
+Signing uses `android/keystore.properties` and the keystore it points to
+(`.local/gradex-bitm-release.jks`). Neither is in git. Keep both: Android only
+installs an update over the old app if it is signed with the same key. Bump
+`versionCode` and `versionName` in `android/app/build.gradle` for each new APK.
 
 ## How attendance is stored
 

@@ -1,0 +1,14 @@
+{
+  "appId": "com.gradex.bitm",
+  "appName": "GradeX BITM",
+  "webDir": "capacitor-shell",
+  "backgroundColor": "#020202",
+  "server": {
+    "url": "https://bitm.gradex.bond",
+    "allowNavigation": [
+      "bitm.gradex.bond",
+      "gradex-bitm.vercel.app",
+      "*.clerk.accounts.dev"
+    ]
+  }
+}

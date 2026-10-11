@@ -10,7 +10,9 @@
     "build": "vite build",
     "test": "vitest run",
     "deploy:convex": "node scripts/deploy-convex.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "app:android": "cap sync android && cd android && ./gradlew assembleRelease",
+    "app:android:usb": "npm run app:android && adb install -r android/app/build/outputs/apk/release/app-release.apk"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.4",
@@ -23,6 +25,9 @@
     "recharts": "^3.5.0"
   },
   "devDependencies": {
+    "@capacitor/android": "^6.2.2",
+    "@capacitor/cli": "^6.2.2",
+    "@capacitor/core": "^6.2.2",
     "@edge-runtime/vm": "^5.0.0",
     "@vitejs/plugin-react": "^5.1.0",
     "concurrently": "^8.2.2",
