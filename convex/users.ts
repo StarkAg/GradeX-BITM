@@ -1,12 +1,12 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { DEFAULT_SUBJECTS, buildDefaultTimetableEntries } from "./defaults";
 import { requireIdentity, nowTs } from "./lib/auth";
 
-async function ensureDefaultAcademicState(ctx: Parameters<typeof mutation>[0]["handler"] extends never ? never : any, userId: string) {
+async function ensureDefaultAcademicState(ctx: MutationCtx, userId: string) {
   const existingSubject = await ctx.db
     .query("subjects")
-    .withIndex("by_user_id", (q: any) => q.eq("userId", userId))
+    .withIndex("by_user_id", (q) => q.eq("userId", userId))
     .first();
 
   if (existingSubject) {
@@ -170,6 +170,7 @@ export const deleteCurrentUserData = mutation({
     await deleteMany("timetableEntries", "by_user_id", "userId");
     await deleteMany("attendanceDaily", "by_user_id", "userId");
     await deleteMany("attendanceTotals", "by_user_id", "userId");
+    await deleteMany("holidays", "by_user_id", "userId");
 
     const user = await ctx.db
       .query("users")

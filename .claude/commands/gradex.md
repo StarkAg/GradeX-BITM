@@ -8,20 +8,30 @@ version of the current `package.json` version and state what you picked).
 Run these in order. **The ordering is the whole point of this command** - see the
 warning at the bottom before deviating.
 
-## 1. Bump and build
+## 1. Bump, test and build
 
+- `git fetch origin -q && git log --oneline HEAD..origin/main`
+  must be **empty**. A release is never cut from a checkout that is behind main.
 - Set `version` in `package.json` to the target version.
+- `npm test` must pass.
 - `npx vite build --mode production` and confirm it succeeds.
 - Confirm `dist/version.json` reports the new `appVersion`.
 
-## 2. Push to main
+## 2. Commit, deploy Convex, push to main
 
 - `git add -A` and commit. Write a real commit message: what changed and *why*,
   not a version number alone.
-- Confirm the push is a clean fast-forward first:
-  `git fetch origin -q && git log --oneline HEAD..origin/main` must be **empty**.
-  If it is not, stop and report - do not force anything.
-- `git push origin HEAD:main`
+- `git push origin HEAD:main` (a clean fast-forward; if it is not, stop and
+  report - do not force anything).
+- `npm run deploy:convex`. Never a bare `npx convex deploy`, and never
+  `vercel --prod`: a Convex deploy replaces the whole function set with what is
+  on disk, so deploying from a stale or uncommitted tree deletes functions in
+  production. The script refuses unless `convex/` is committed and the checkout
+  is exactly origin/main. Vercel deploys itself from the push.
+
+The new Convex functions go live a few seconds before the new site does. That
+order is deliberate: the backend must keep accepting the old site's calls, and
+the new site may call functions the old backend does not have.
 
 ## 3. Wait for production to actually serve it
 
@@ -37,19 +47,12 @@ work around.
 
 ## 4. Only now, set the Convex force-update gate
 
-`setForceUpdateVersion` requires an authenticated identity, so the Convex CLI
-**cannot** call it (`requireIdentity` rejects it). Write the row directly instead.
-
-`appSettings` should hold exactly one row, so use `--replace`, never `--append` -
-`getForceUpdateVersion` uses `.first()`, and a duplicate row makes which value
-wins nondeterministic.
+`setForceUpdateVersion` is an internal mutation: no client can call it, the CLI
+can. It keeps `appSettings` at exactly one row.
 
 ```
-echo '{"key":"force_update_version","value":"<TARGET>","createdAt":<ORIGINAL>,"updatedAt":<NOW>}' > gate.jsonl
-npx convex import --prod --table appSettings --replace -y gate.jsonl
+npx convex run appSettings:setForceUpdateVersion '{"version":"<TARGET>"}' --prod
 ```
-
-Preserve the existing `createdAt`; only `updatedAt` changes.
 
 ## 5. Verify
 
@@ -77,4 +80,4 @@ Also note the gate is one-shot per user, not a permanent floor: once a client
 reaches the target it records `gradex_last_force_update` and stops checking.
 Leave the row at the current version; bump it on the next release.
 
-To disable a forced update, set `value` to an empty string or delete the row.
+To disable a forced update, run the same command with `"version":""`.

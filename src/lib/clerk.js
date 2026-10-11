@@ -65,7 +65,23 @@ export function hasCachedIdentity() {
   }
 }
 
-export function clearLocalAuthCache(includeAcademicData = false) {
+// The offline copy of one account's subjects, timetable and attendance, and
+// the key recording whose copy it is (see buildLocalSnapshot in
+// ./academic-data.js).
+export const ACADEMIC_CACHE_OWNER_KEY = 'gradex_cache_owner';
+export const ACADEMIC_CACHE_KEYS = [
+  'gradex_subjects',
+  'gradex_timetable',
+  'gradex_daily_attendance',
+  'gradex_manual_attendance',
+  'gradex_holidays',
+];
+
+// Signing out always takes the academic cache with it: it used to stay behind
+// (always for attendance totals), and the next person to sign in on the same
+// phone was shown the previous person's timetable and attendance until the
+// server answered.
+export function clearLocalAuthCache() {
   const keys = [
     'gradex_user_id',
     'gradex_username',
@@ -73,15 +89,9 @@ export function clearLocalAuthCache(includeAcademicData = false) {
     'gradex_user_email',
     'gradex-attendance',
     'gradex-courses',
+    ACADEMIC_CACHE_OWNER_KEY,
+    ...ACADEMIC_CACHE_KEYS,
   ];
-
-  if (includeAcademicData) {
-    keys.push(
-      'gradex_subjects',
-      'gradex_timetable',
-      'gradex_daily_attendance'
-    );
-  }
 
   keys.forEach((key) => localStorage.removeItem(key));
   window.dispatchEvent(new Event('storage'));

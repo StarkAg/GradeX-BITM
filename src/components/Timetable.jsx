@@ -188,7 +188,7 @@ export default function Timetable() {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-      link.download = `TimeTable_${profile?.name || profile?.username || 'BBA_IIA'}.jpg`;
+      link.download = `TimeTable_${profile?.name || profile?.username || 'BBA_IIIA'}.jpg`;
         link.click();
       setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch (err) {

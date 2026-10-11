@@ -1,12 +1,18 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { DEFAULT_SUBJECTS, DEFAULT_TIMETABLE, TIMETABLE_DAYS, normalizeBaseSubjectCode } from "./defaults";
+import {
+  DEFAULT_SUBJECTS,
+  DEFAULT_TIMETABLE,
+  MAX_TIMETABLE_SLOTS,
+  TIMETABLE_DAYS,
+  resolveBaseSubjectCode,
+} from "./defaults";
 import { requireIdentity, nowTs } from "./lib/auth";
 
 function buildEmptyTimetable() {
   const timetable: Record<string, Array<{ code: string; room?: string; isLab?: boolean } | null>> = {};
   for (const day of TIMETABLE_DAYS) {
-    timetable[day] = Array(10).fill(null);
+    timetable[day] = Array(MAX_TIMETABLE_SLOTS).fill(null);
   }
   return timetable;
 }
@@ -18,6 +24,14 @@ function buildDailyAttendanceMap(
   for (const record of records) {
     if (!map[record.date]) map[record.date] = {};
     map[record.date][record.subjectCode] = record.status;
+  }
+  return map;
+}
+
+function buildHolidayMap(records: Array<{ date: string; label?: string }>) {
+  const map: Record<string, string> = {};
+  for (const record of records) {
+    map[record.date] = record.label || "Holiday";
   }
   return map;
 }
@@ -67,22 +81,54 @@ async function upsertAttendanceTotal(
   });
 }
 
-async function recalculateAttendanceTotal(ctx: any, userId: string, subjectCode: string) {
-  const baseCode = normalizeBaseSubjectCode(subjectCode);
-  const dailyRows = await ctx.db
-    .query("attendanceDaily")
+const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_SUBJECTS = 60;
+
+function assertDateKey(date: string) {
+  if (!DATE_KEY_PATTERN.test(date)) {
+    throw new Error("Invalid date");
+  }
+}
+
+function toCount(value: number) {
+  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+}
+
+async function getKnownSubjectCodes(ctx: any, userId: string) {
+  const subjects = await ctx.db
+    .query("subjects")
     .withIndex("by_user_id", (q: any) => q.eq("userId", userId))
     .collect();
+  return new Set<string>(subjects.map((subject: { code: string }) => subject.code));
+}
 
-  let classesAttended = 0;
-  let classesConducted = 0;
-  for (const row of dailyRows) {
-    if (normalizeBaseSubjectCode(row.subjectCode) !== baseCode) continue;
-    classesConducted += 1;
-    if (row.status === "present") {
-      classesAttended += 1;
-    }
-  }
+/**
+ * Moves a subject's running total by the difference one calendar mark makes.
+ * The total is NOT recounted from the daily rows: it also carries whatever the
+ * student entered on the Attendance page (classes held before they started
+ * marking day by day), and a recount threw that away on every calendar tap.
+ */
+async function adjustAttendanceTotal(
+  ctx: any,
+  userId: string,
+  baseCode: string,
+  attendedDelta: number,
+  conductedDelta: number
+) {
+  if (attendedDelta === 0 && conductedDelta === 0) return;
+
+  const existing = await ctx.db
+    .query("attendanceTotals")
+    .withIndex("by_user_id_subject_code", (q: any) =>
+      q.eq("userId", userId).eq("subjectCode", baseCode)
+    )
+    .first();
+
+  const classesConducted = Math.max(0, (existing?.classesConducted ?? 0) + conductedDelta);
+  const classesAttended = Math.min(
+    classesConducted,
+    Math.max(0, (existing?.classesAttended ?? 0) + attendedDelta)
+  );
 
   await upsertAttendanceTotal(ctx, userId, baseCode, classesAttended, classesConducted);
 }
@@ -93,7 +139,7 @@ export const getCurrentSnapshot = query({
     const identity = await requireIdentity(ctx);
     const userId = identity.subject;
 
-    const [profile, subjectDocs, timetableDocs, dailyDocs, totalDocs] = await Promise.all([
+    const [profile, subjectDocs, timetableDocs, dailyDocs, totalDocs, holidayDocs] = await Promise.all([
       ctx.db
         .query("users")
         .withIndex("by_clerk_user_id", (q) => q.eq("clerkUserId", userId))
@@ -109,6 +155,10 @@ export const getCurrentSnapshot = query({
         .collect(),
       ctx.db
         .query("attendanceTotals")
+        .withIndex("by_user_id", (q) => q.eq("userId", userId))
+        .collect(),
+      ctx.db
+        .query("holidays")
         .withIndex("by_user_id", (q) => q.eq("userId", userId))
         .collect(),
     ]);
@@ -140,7 +190,11 @@ export const getCurrentSnapshot = query({
         );
 
     for (const entry of sourceEntries) {
-      timetable[entry.day][entry.slotIndex] = {
+      if (!entry) continue;
+      // One row outside the grid must not take the whole snapshot down with it.
+      const daySlots = timetable[entry.day];
+      if (!daySlots || entry.slotIndex < 0 || entry.slotIndex >= MAX_TIMETABLE_SLOTS) continue;
+      daySlots[entry.slotIndex] = {
         code: entry.subjectCode,
         room: entry.room,
         isLab: Boolean(entry.isLab),
@@ -161,6 +215,7 @@ export const getCurrentSnapshot = query({
       timetable,
       attendanceTotals: buildAttendanceTotalsMap(totalDocs),
       dailyAttendance: buildDailyAttendanceMap(dailyDocs),
+      holidays: buildHolidayMap(holidayDocs),
     };
   },
 });
@@ -181,7 +236,27 @@ export const saveAcademicState = mutation({
     const identity = await requireIdentity(ctx);
     const userId = identity.subject;
     const timestamp = nowTs();
-    const nextCodes = new Set(args.subjects.map((subject) => subject.code));
+
+    if (args.subjects.length > MAX_SUBJECTS) {
+      throw new Error("Too many subjects");
+    }
+
+    // Two subjects sharing a code would share one attendance record and one
+    // timetable colour, so only the first of each code is kept.
+    const nextCodes = new Set<string>();
+    const nextSubjects: Array<{ name: string; code: string; room: string; isLab: boolean }> = [];
+    for (const subject of args.subjects) {
+      const code = subject.code.trim().slice(0, 32);
+      const name = subject.name.trim().slice(0, 120);
+      if (!code || !name || nextCodes.has(code)) continue;
+      nextCodes.add(code);
+      nextSubjects.push({
+        name,
+        code,
+        room: subject.room.trim().slice(0, 40) || "LH-11",
+        isLab: Boolean(subject.isLab),
+      });
+    }
 
     const existingSubjects = await ctx.db
       .query("subjects")
@@ -199,30 +274,33 @@ export const saveAcademicState = mutation({
       await ctx.db.delete(row._id);
     }
 
-    for (const subject of args.subjects) {
+    for (const subject of nextSubjects) {
       await ctx.db.insert("subjects", {
         userId,
         code: subject.code,
         name: subject.name,
-        room: subject.room || "LH-11",
-        isLab: Boolean(subject.isLab),
+        room: subject.room,
+        isLab: subject.isLab,
         createdAt: timestamp,
         updatedAt: timestamp,
       });
     }
 
-    for (const day of Object.keys(args.timetable || {})) {
-      const slots = Array.isArray(args.timetable[day]) ? args.timetable[day] : [];
+    const timetable = args.timetable && typeof args.timetable === "object" ? args.timetable : {};
+    for (const day of TIMETABLE_DAYS) {
+      const slots = Array.isArray(timetable[day]) ? timetable[day].slice(0, MAX_TIMETABLE_SLOTS) : [];
       for (let slotIndex = 0; slotIndex < slots.length; slotIndex += 1) {
         const slot = slots[slotIndex];
-        if (!slot?.code) continue;
+        // A cell naming a subject that is not in the list has nothing to
+        // show and nowhere to record attendance, so it is not stored.
+        if (!slot || typeof slot.code !== "string" || !nextCodes.has(slot.code)) continue;
 
         await ctx.db.insert("timetableEntries", {
           userId,
           day,
           slotIndex,
           subjectCode: slot.code,
-          room: slot.room || "LH-11",
+          room: (typeof slot.room === "string" && slot.room.trim().slice(0, 40)) || "LH-11",
           isLab: Boolean(slot.isLab),
           createdAt: timestamp,
           updatedAt: timestamp,
@@ -230,12 +308,14 @@ export const saveAcademicState = mutation({
       }
     }
 
+    // Attendance is kept for every subject still in the list and dropped only
+    // for subjects that were removed.
     const attendanceTotals = await ctx.db
       .query("attendanceTotals")
       .withIndex("by_user_id", (q) => q.eq("userId", userId))
       .collect();
     for (const row of attendanceTotals) {
-      if (!nextCodes.has(normalizeBaseSubjectCode(row.subjectCode))) {
+      if (!nextCodes.has(resolveBaseSubjectCode(row.subjectCode, nextCodes))) {
         await ctx.db.delete(row._id);
       }
     }
@@ -245,7 +325,7 @@ export const saveAcademicState = mutation({
       .withIndex("by_user_id", (q) => q.eq("userId", userId))
       .collect();
     for (const row of attendanceDaily) {
-      if (!nextCodes.has(normalizeBaseSubjectCode(row.subjectCode))) {
+      if (!nextCodes.has(resolveBaseSubjectCode(row.subjectCode, nextCodes))) {
         await ctx.db.delete(row._id);
       }
     }
@@ -260,12 +340,14 @@ export const setManualAttendanceTotal = mutation({
   },
   handler: async (ctx, args) => {
     const identity = await requireIdentity(ctx);
+    const knownCodes = await getKnownSubjectCodes(ctx, identity.subject);
+    const conducted = toCount(args.conducted);
     await upsertAttendanceTotal(
       ctx,
       identity.subject,
-      normalizeBaseSubjectCode(args.subjectCode),
-      Math.max(0, args.attended),
-      Math.max(0, args.conducted)
+      resolveBaseSubjectCode(args.subjectCode.trim(), knownCodes),
+      Math.min(conducted, toCount(args.attended)),
+      conducted
     );
   },
 });
@@ -279,12 +361,23 @@ export const setDailyAttendanceStatus = mutation({
   handler: async (ctx, args) => {
     const identity = await requireIdentity(ctx);
     const userId = identity.subject;
+    assertDateKey(args.date);
+    const subjectCode = args.subjectCode.trim();
+    if (!subjectCode || subjectCode.length > 48) {
+      throw new Error("Invalid subject");
+    }
+
     const existing = await ctx.db
       .query("attendanceDaily")
       .withIndex("by_user_id_date_subject", (q) =>
-        q.eq("userId", userId).eq("date", args.date).eq("subjectCode", args.subjectCode)
+        q.eq("userId", userId).eq("date", args.date).eq("subjectCode", subjectCode)
       )
       .first();
+
+    const previous = existing?.status ?? null;
+    // The same mark arriving twice (a double tap, a replayed offline write)
+    // changes nothing, so it must not move the total either.
+    if (previous === args.status) return;
 
     if (args.status === null) {
       if (existing) {
@@ -299,13 +392,57 @@ export const setDailyAttendanceStatus = mutation({
       await ctx.db.insert("attendanceDaily", {
         userId,
         date: args.date,
-        subjectCode: args.subjectCode,
+        subjectCode,
         status: args.status,
         createdAt: nowTs(),
         updatedAt: nowTs(),
       });
     }
 
-    await recalculateAttendanceTotal(ctx, userId, args.subjectCode);
+    const knownCodes = await getKnownSubjectCodes(ctx, userId);
+    await adjustAttendanceTotal(
+      ctx,
+      userId,
+      resolveBaseSubjectCode(subjectCode, knownCodes),
+      (args.status === "present" ? 1 : 0) - (previous === "present" ? 1 : 0),
+      (args.status === null ? 0 : 1) - (previous === null ? 0 : 1)
+    );
+  },
+});
+
+export const setHoliday = mutation({
+  args: {
+    date: v.string(),
+    isHoliday: v.boolean(),
+    label: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await requireIdentity(ctx);
+    const userId = identity.subject;
+    assertDateKey(args.date);
+    const label = args.label?.trim().slice(0, 60);
+    const existing = await ctx.db
+      .query("holidays")
+      .withIndex("by_user_id_date", (q) => q.eq("userId", userId).eq("date", args.date))
+      .first();
+
+    if (!args.isHoliday) {
+      if (existing) {
+        await ctx.db.delete(existing._id);
+      }
+    } else if (existing) {
+      await ctx.db.patch(existing._id, {
+        label: label || existing.label || "Holiday",
+        updatedAt: nowTs(),
+      });
+    } else {
+      await ctx.db.insert("holidays", {
+        userId,
+        date: args.date,
+        label: label || "Holiday",
+        createdAt: nowTs(),
+        updatedAt: nowTs(),
+      });
+    }
   },
 });

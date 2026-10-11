@@ -140,7 +140,7 @@ export default function FacultyAttendancePanel() {
       }
     });
 
-    // Save to Supabase asynchronously
+    // Save asynchronously
     await saveAttendance(studentId, newStatus, dateKey, selectedSubject.code);
   };
 
@@ -615,10 +615,10 @@ export default function FacultyAttendancePanel() {
                     [dateKey]: { ...current, ...updates }
                   }));
 
-                  // Save to Supabase
+                  // Save
                   await Promise.all(
                     Object.keys(updates).map(studentId =>
-                      saveAttendanceToSupabase(studentId, true, dateKey, selectedSubject.code)
+                      saveAttendance(studentId, true, dateKey, selectedSubject.code)
                     )
                   );
                 }}
@@ -662,10 +662,10 @@ export default function FacultyAttendancePanel() {
                     [dateKey]: { ...current, ...updates }
                   }));
 
-                  // Save to Supabase
+                  // Save
                   await Promise.all(
                     Object.keys(updates).map(studentId =>
-                      saveAttendanceToSupabase(studentId, false, dateKey, selectedSubject.code)
+                      saveAttendance(studentId, false, dateKey, selectedSubject.code)
                     )
                   );
                 }}

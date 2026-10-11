@@ -1,4 +1,4 @@
-// Activity log for tracking all Supabase updates
+// Activity log: the last 100 changes made on this device, per user
 
 const MAX_LOG_ENTRIES = 100; // Keep last 100 entries
 

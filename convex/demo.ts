@@ -1,29 +1,27 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { DEFAULT_SUBJECTS } from "./defaults";
-import { nowTs } from "./lib/auth";
+import { nowTs, requireIdentity } from "./lib/auth";
 
 export const listSubjectCatalog = query({
   args: {},
   handler: async (ctx) => {
-    const subjects = await ctx.db.query("subjects").collect();
+    // The caller's own subjects - this used to read every student's rows.
+    const identity = await requireIdentity(ctx);
+    const subjects = await ctx.db
+      .query("subjects")
+      .withIndex("by_user_id", (q) => q.eq("userId", identity.subject))
+      .collect();
     if (!subjects.length) {
       return DEFAULT_SUBJECTS;
     }
 
-    const unique = new Map<string, { name: string; code: string; room: string; isLab: boolean }>();
-    for (const subject of subjects) {
-      if (!unique.has(subject.code)) {
-        unique.set(subject.code, {
-          name: subject.name,
-          code: subject.code,
-          room: subject.room || "LH-11",
-          isLab: Boolean(subject.isLab),
-        });
-      }
-    }
-
-    return Array.from(unique.values());
+    return subjects.map((subject) => ({
+      name: subject.name,
+      code: subject.code,
+      room: subject.room || "LH-11",
+      isLab: Boolean(subject.isLab),
+    }));
   },
 });
 
@@ -38,6 +36,12 @@ export const setFacultyAttendance = mutation({
     status: v.union(v.literal("present"), v.literal("absent"), v.null()),
   },
   handler: async (ctx, args) => {
+    await requireIdentity(ctx);
+    const fields = [args.facultyId, args.studentId, args.studentName, args.subjectCode, args.classroom];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(args.date) || fields.some((value) => value.length > 120)) {
+      throw new Error("Invalid attendance entry");
+    }
+
     const existingRows = await ctx.db
       .query("facultyAttendance")
       .withIndex("by_student_id_date", (q) =>
@@ -84,6 +88,7 @@ export const getStudentFacultyAttendance = query({
     studentId: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireIdentity(ctx);
     const rows = await ctx.db
       .query("facultyAttendance")
       .withIndex("by_student_id", (q) => q.eq("studentId", args.studentId))

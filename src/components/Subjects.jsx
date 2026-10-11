@@ -4,6 +4,7 @@ import { getSubjectColor, DEFAULT_SUBJECTS, DEFAULT_TIMETABLE } from '../lib/sub
 import ConfirmModal from './ConfirmModal';
 import { logActivity } from '../lib/activity-log';
 import { isViewOnlyMode } from '../lib/view-only';
+import { findConflictingSubjectCode } from '../lib/attendance-codes';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const TIME_SLOTS = [
@@ -28,6 +29,7 @@ export default function Subjects() {
   const [newSubject, setNewSubject] = useState({ name: '', code: '', room: 'LH-11', isLab: false, schedule: {} });
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, code: null });
   const [resetConfirm, setResetConfirm] = useState(false);
+  const [formError, setFormError] = useState('');
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [viewOnly, setViewOnly] = useState(false);
 
@@ -65,69 +67,118 @@ export default function Subjects() {
     });
   };
 
+  // Shows the change at once and puts the previous list back if the save is
+  // refused, so the screen never claims something was saved when it was not.
   const persistAcademicState = async (nextSubjects, nextTimetable) => {
+    const previousSubjects = subjects;
+    const previousTimetable = timetable;
     setSubjects(nextSubjects);
     setTimetable(nextTimetable);
-    await saveAcademicState({
-      subjects: nextSubjects.map((subject) => ({
-        name: subject.name,
-        code: subject.code,
-        room: subject.room || 'LH-11',
-        isLab: Boolean(subject.isLab),
-      })),
-      timetable: nextTimetable,
-    });
+    try {
+      await saveAcademicState({
+        subjects: nextSubjects.map((subject) => ({
+          name: subject.name,
+          code: subject.code,
+          room: subject.room || 'LH-11',
+          isLab: Boolean(subject.isLab),
+        })),
+        timetable: nextTimetable,
+      });
+      return true;
+    } catch (err) {
+      console.error('Error saving subjects:', err);
+      setSubjects(previousSubjects);
+      setTimetable(previousTimetable);
+      return false;
+    }
+  };
+
+  // Cancelling an edit used to leave that subject's details in the form, so
+  // the next "Add" opened as an edit of it.
+  const openAddModal = () => {
+    setFormError('');
+    setNewSubject({ name: '', code: '', room: 'LH-11', isLab: false, schedule: {} });
+    setShowAddModal(true);
+  };
+
+  const closeSubjectModal = () => {
+    setShowAddModal(false);
+    setFormError('');
+    setNewSubject({ name: '', code: '', room: 'LH-11', isLab: false, schedule: {} });
   };
 
   const handleAddSubject = async () => {
     if (!newSubject.name.trim() || viewOnly) return; // Prevent edits in view-only mode
-    const code = newSubject.code.trim() || newSubject.name.split(' ').map(w => w[0]).join('').toUpperCase();
-    
+    const name = newSubject.name.trim();
+    const room = newSubject.room.trim() || 'LH-11';
+    const isLab = Boolean(newSubject.isLab);
+    let saved;
+
     if (newSubject.isEdit) {
-      // Update existing subject
-      const updatedSubjects = subjects.map(s => s.code === code ? { ...s, name: newSubject.name.trim(), room: newSubject.room || 'LH-11' } : s);
-      logActivity('subject_updated', {
-        name: newSubject.name.trim(),
-        code,
-        room: newSubject.room || 'LH-11'
-      });
-      
-      // Clear old schedule and add new
+      // The code is the key attendance is filed under, so an edit keeps it.
+      const code = newSubject.originalCode;
+      const original = subjects.find(s => s.code === code);
+      const updatedSubjects = subjects.map(s => s.code === code ? { ...s, name, room, isLab } : s);
+      logActivity('subject_updated', { name, code, room });
+
+      // Hours the subject keeps stay exactly as they were. Each hour has its
+      // own room and lab flag (CA is a lab on Thursday only), and rewriting
+      // them all from this form turned every CA hour into a lab, which also
+      // changed the key its past attendance is stored under. Only a room or
+      // lab setting actually changed in the form is applied to existing hours.
+      const roomChanged = room !== (original?.room || 'LH-11');
+      const labChanged = isLab !== Boolean(original?.isLab);
       const newTimetable = { ...timetable };
       DAYS.forEach(day => {
-        if (newTimetable[day]) {
-          newTimetable[day] = newTimetable[day].map(cell => cell?.code === code ? null : cell);
-        }
+        const slots = [...(timetable[day] || Array(TIME_SLOTS.length).fill(null))];
+        TIME_SLOTS.forEach((_, slotIndex) => {
+          const cell = slots[slotIndex];
+          const isOwn = cell?.code === code;
+          const selected = Boolean(newSubject.schedule[`${day}-${slotIndex}`]);
+          if (isOwn && !selected) {
+            slots[slotIndex] = null;
+          } else if (isOwn) {
+            slots[slotIndex] = {
+              ...cell,
+              room: roomChanged ? room : (cell.room || room),
+              isLab: labChanged ? isLab : Boolean(cell.isLab),
+            };
+          } else if (selected && !cell?.code) {
+            slots[slotIndex] = { code, room, isLab };
+          }
+        });
+        newTimetable[day] = slots;
       });
-      Object.keys(newSubject.schedule).forEach(key => {
-        const [day, slotIndex] = key.split('-');
-        if (!newTimetable[day]) newTimetable[day] = Array(9).fill(null);
-        newTimetable[day][parseInt(slotIndex)] = { code, room: newSubject.room || 'LH-11', isLab: newSubject.isLab };
-      });
-      await persistAcademicState(updatedSubjects, newTimetable);
+      saved = await persistAcademicState(updatedSubjects, newTimetable);
     } else {
-      const nextSubjects = [
-        ...subjects,
-        { name: newSubject.name.trim(), code, room: newSubject.room || 'LH-11', isLab: newSubject.isLab },
-      ];
-      logActivity('subject_added', {
-        name: newSubject.name.trim(),
-        code,
-        room: newSubject.room || 'LH-11'
-      });
-      
+      const code = (newSubject.code.trim() || name.split(/\s+/).map(w => w[0]).join('').toUpperCase()).slice(0, 32);
+      const conflict = findConflictingSubjectCode(code, subjects.map(s => s.code));
+      if (conflict) {
+        setFormError(conflict === code
+          ? `Code ${code} is already used. Enter a different code.`
+          : `Code ${code} would be confused with ${conflict}. Enter a different code.`);
+        return;
+      }
+
+      const nextSubjects = [...subjects, { name, code, room, isLab }];
+      logActivity('subject_added', { name, code, room });
+
       // Add to timetable
       const newTimetable = { ...timetable };
       Object.keys(newSubject.schedule).forEach(key => {
         const [day, slotIndex] = key.split('-');
-        if (!newTimetable[day]) newTimetable[day] = Array(9).fill(null);
-        newTimetable[day][parseInt(slotIndex)] = { code, room: newSubject.room || 'LH-11', isLab: newSubject.isLab };
+        const slots = [...(newTimetable[day] || Array(TIME_SLOTS.length).fill(null))];
+        slots[parseInt(slotIndex, 10)] = { code, room, isLab };
+        newTimetable[day] = slots;
       });
-      await persistAcademicState(nextSubjects, newTimetable);
+      saved = await persistAcademicState(nextSubjects, newTimetable);
     }
-    
-    setNewSubject({ name: '', code: '', room: 'LH-11', isLab: false, schedule: {} });
-    setShowAddModal(false);
+
+    if (!saved) {
+      setFormError('Could not save. Check your connection and try again.');
+      return;
+    }
+    closeSubjectModal();
   };
 
   const handleEditSubject = (subject) => {
@@ -143,7 +194,8 @@ export default function Subjects() {
         });
       }
     });
-    setNewSubject({ name: subject.name, code: subject.code, room: subject.room || 'LH-11', isLab: subject.isLab || false, schedule, isEdit: true });
+    setFormError('');
+    setNewSubject({ name: subject.name, code: subject.code, originalCode: subject.code, room: subject.room || 'LH-11', isLab: subject.isLab || false, schedule, isEdit: true });
     setShowAddModal(true);
   };
 
@@ -200,7 +252,7 @@ export default function Subjects() {
           <button onClick={handleReset} style={{ flex: 1, padding: isMobile ? '10px 12px' : '10px 16px', fontSize: isMobile ? '12px' : '13px', fontWeight: 500, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', borderRadius: '8px', cursor: 'pointer' }}>Reset</button>
         )}
         <button
-          onClick={() => !viewOnly && setShowAddModal(true)}
+          onClick={() => !viewOnly && openAddModal()}
           disabled={viewOnly}
           style={{
             flex: 1,
@@ -266,7 +318,7 @@ export default function Subjects() {
           <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>No Subjects</h3>
           <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '20px' }}>Add subjects to manage your timetable and attendance.</p>
           {!viewOnly && (
-            <button onClick={() => setShowAddModal(true)} style={{ padding: '12px 24px', fontSize: '14px', fontWeight: 500, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', borderRadius: '8px', cursor: 'pointer' }}>Add Your First Subject</button>
+            <button onClick={openAddModal} style={{ padding: '12px 24px', fontSize: '14px', fontWeight: 500, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', borderRadius: '8px', cursor: 'pointer' }}>Add Your First Subject</button>
           )}
         </div>
       )}
@@ -284,7 +336,7 @@ export default function Subjects() {
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '6px', textTransform: 'uppercase' }}>Code</label>
-                <input type="text" value={newSubject.code} onChange={(e) => setNewSubject(prev => ({ ...prev, code: e.target.value.toUpperCase() }))} placeholder="e.g., DS" style={{ width: '100%', padding: '10px 12px', fontSize: '14px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'var(--bg-primary)', color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box' }} />
+                <input type="text" value={newSubject.code} disabled={Boolean(newSubject.isEdit)} maxLength={32} onChange={(e) => { setFormError(''); setNewSubject(prev => ({ ...prev, code: e.target.value.toUpperCase() })); }} placeholder="e.g., DS" style={{ opacity: newSubject.isEdit ? 0.6 : 1, width: '100%', padding: '10px 12px', fontSize: '14px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'var(--bg-primary)', color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box' }} />
               </div>
             </div>
 
@@ -342,8 +394,13 @@ export default function Subjects() {
 
             <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '16px', padding: '10px', background: 'var(--hover-bg)', borderRadius: '6px' }}>Subject will be added to both Timetable and Attendance tracker.</p>
 
+            {formError && (
+              <div role="alert" style={{ marginBottom: '12px', padding: '8px 12px', borderRadius: '8px', background: 'rgba(248, 113, 113, 0.12)', border: '1px solid rgba(248, 113, 113, 0.4)', color: '#f87171', fontSize: '12px' }}>
+                {formError}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: '12px' }}>
-              <button onClick={() => setShowAddModal(false)} style={{ flex: 1, padding: '10px', fontSize: '14px', fontWeight: 500, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-primary)', borderRadius: '8px', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={closeSubjectModal} style={{ flex: 1, padding: '10px', fontSize: '14px', fontWeight: 500, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-primary)', borderRadius: '8px', cursor: 'pointer' }}>Cancel</button>
               <button onClick={handleAddSubject} disabled={!newSubject.name.trim()} style={{ flex: 1, padding: '10px', fontSize: '14px', fontWeight: 500, border: 'none', background: 'var(--text-primary)', color: 'var(--bg-primary)', borderRadius: '8px', cursor: !newSubject.name.trim() ? 'not-allowed' : 'pointer', opacity: !newSubject.name.trim() ? 0.5 : 1 }}>{newSubject.isEdit ? 'Save Changes' : 'Add Subject'}</button>
             </div>
           </div>

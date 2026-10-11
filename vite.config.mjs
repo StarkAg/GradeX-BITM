@@ -105,7 +105,6 @@ export default defineConfig({
       manifestFilename: 'manifest.webmanifest',
       includeAssets: [
         'arc-reactor.png',
-        'arc-reactor1.png',
         'arc-favicon.svg',
         'icon-bitm-32.png',
         'icon-bitm-192.png',
@@ -187,7 +186,7 @@ export default defineConfig({
           },
         ],
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api/, /^\/version\.json$/],
+        navigateFallbackDenylist: [/^\/version\.json$/],
       },
       devOptions: {
         enabled: false,
@@ -197,13 +196,5 @@ export default defineConfig({
   server: {
     port: 3000,
     host: true, // Allow access from network (for phone testing)
-    // Proxy API requests to local Express server during development
-    proxy: {
-      '/api': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-        secure: false,
-      }
-    }
   }
 })

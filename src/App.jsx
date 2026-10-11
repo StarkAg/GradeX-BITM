@@ -52,9 +52,11 @@ import FacultyAttendancePanel from './components/FacultyAttendancePanel';
 import StudentDemoView from './components/StudentDemoView';
 import PWAUpdatePrompt from './components/PWAUpdatePrompt';
 import OfflineIndicator from './components/OfflineIndicator';
+import ErrorBoundary from './components/ErrorBoundary';
 import {
   useCurrentProfile,
   useLogSocialClick,
+  usePendingOpsSync,
   useSyncCurrentUser,
   useUpdateCurrentProfile,
 } from './lib/academic-data';
@@ -89,6 +91,18 @@ const SPLASH_PROGRESS_STEP = 4;
 const SPLASH_EXIT_DELAY_MS = 150;
 const SPLASH_TEXT_PAUSE_MS = 50;
 const SPLASH_TEXTS = ['INITIALIZING...'];
+
+// The force-update check lives in its own component, inside its own error
+// boundary: useQuery throws during render when the server rejects a query, and
+// a backend that does not (yet, or any longer) have this function must not be
+// able to take the whole app down with it.
+function ForceUpdateProbe({ onChange }) {
+  const version = useQuery(api.appSettings.getForceUpdateVersion, {});
+  useEffect(() => {
+    onChange(version);
+  }, [version, onChange]);
+  return null;
+}
 
 function ConvexGate({ message, onLogout }) {
   return (
@@ -197,12 +211,13 @@ export default function App() {
   const forceUpdateInFlightRef = useRef(null);
   const location = useLocation();
 
-  // Skipped until the Convex probe says the backend is actually reachable, so
-  // an offline launch never blocks on this query.
-  const forceUpdateVersion = useQuery(
-    api.appSettings.getForceUpdateVersion,
-    convexStatusChecked && isConvexAvailable ? {} : 'skip'
-  );
+  // Reported by <ForceUpdateProbe>, which is only mounted once the Convex probe
+  // says the backend is actually reachable, so an offline launch never blocks
+  // on this query.
+  const [forceUpdateVersion, setForceUpdateVersion] = useState(undefined);
+
+  // Sends anything the user did while Convex could not take it.
+  usePendingOpsSync();
 
   useEffect(() => {
     const handleVisibility = () => setTabVisible(document.visibilityState === 'visible');
@@ -459,22 +474,25 @@ export default function App() {
     }
   };
 
-  const handleAuthSuccess = async (authUser) => {
-    const resolvedUser = authUser || (user ? {
-      id: user.id,
-      username: getClerkUsername(user),
-      name: getClerkDisplayName(user),
-    } : null);
+  // AuthPage reports a finished sign-in before Clerk has handed over the user,
+  // so the greeting is decided here once the real profile is in hand. It used
+  // to be decided from a stand-in built out of the email address, which never
+  // has a name - every password login asked "What's your name?" again.
+  const [justSignedIn, setJustSignedIn] = useState(false);
+  const handleAuthSuccess = () => setJustSignedIn(true);
 
-    // Check if user has a name set
-    if (resolvedUser?.name && resolvedUser.name.trim() && resolvedUser.name !== resolvedUser.username) {
-      setWelcomeName(resolvedUser.name);
+  useEffect(() => {
+    if (!justSignedIn || !isSignedIn || !user) return;
+    setJustSignedIn(false);
+
+    const name = getClerkDisplayName(user);
+    if (name && name.trim() && name !== getClerkUsername(user)) {
+      setWelcomeName(name);
       setShowWelcomeModal(true);
     } else {
-      // No name set, ask for name
       setShowNameModal(true);
     }
-  };
+  }, [justSignedIn, isSignedIn, user]);
 
   const handleSaveName = async () => {
     if (!nameInput.trim() || !user) return;
@@ -1143,6 +1161,11 @@ export default function App() {
           loading/error gate) never installed one - no offline, and no update
           pipeline either. */}
       <PWAUpdatePrompt />
+      {convexStatusChecked && isConvexAvailable && (
+        <ErrorBoundary silent name="force-update">
+          <ForceUpdateProbe onChange={setForceUpdateVersion} />
+        </ErrorBoundary>
+      )}
       {(showSplash || isForceUpdating) && splashScreen}
       <div style={{ opacity: (showSplash || isForceUpdating) ? 0 : 1, transition: 'opacity 0.5s ease-in' }}>
         {mainScreen}

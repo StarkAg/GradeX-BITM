@@ -1,48 +1,77 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { PENDING_OPS_EVENT, SYNC_FEEDBACK_EVENT, countPendingOps } from '../lib/pending-writes';
 
 export default function OfflineIndicator() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [showBanner, setShowBanner] = useState(false);
   const [dismissed, setDismissed] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const wasOfflineRef = useRef(!navigator.onLine);
+  const [pendingCount, setPendingCount] = useState(() => countPendingOps());
+  const [customMessage, setCustomMessage] = useState('');
+  const [customTone, setCustomTone] = useState('');
+  const hideTimerRef = useRef(null);
+
+  // "Syncing" is the real thing: it shows for as long as this device is still
+  // holding writes made offline (see lib/pending-writes.js), not for a fixed
+  // few seconds.
+  const syncing = isOnline && pendingCount > 0;
 
   useEffect(() => {
+    const hideAfter = (ms) => {
+      window.clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = window.setTimeout(() => setShowBanner(false), ms);
+    };
+
     const handleOnline = () => {
       setIsOnline(true);
       setDismissed(false);
+      setCustomMessage('');
+      setCustomTone('');
       setShowBanner(true);
-
-      if (wasOfflineRef.current) {
-        setSyncing(true);
-        setTimeout(() => {
-          setSyncing(false);
-          setTimeout(() => setShowBanner(false), 2000);
-        }, 4000);
-      } else {
-        setTimeout(() => setShowBanner(false), 3000);
-      }
-      wasOfflineRef.current = false;
+      if (countPendingOps() === 0) hideAfter(2500);
     };
 
     const handleOffline = () => {
+      window.clearTimeout(hideTimerRef.current);
       setIsOnline(false);
       setDismissed(false);
+      setCustomMessage('');
+      setCustomTone('');
       setShowBanner(true);
-      wasOfflineRef.current = true;
+    };
+
+    const handlePendingOps = () => {
+      const count = countPendingOps();
+      setPendingCount(count);
+      // The queue just emptied while the "syncing" banner was up.
+      if (count === 0 && navigator.onLine) hideAfter(2000);
+    };
+
+    // As in GradeX: any part of the app can put a message on the banner.
+    const handleSyncFeedback = (event) => {
+      const message = event?.detail?.message;
+      if (!message) return;
+      window.clearTimeout(hideTimerRef.current);
+      setDismissed(false);
+      setShowBanner(true);
+      setCustomMessage(message);
+      setCustomTone(event?.detail?.tone || 'warning');
     };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener(PENDING_OPS_EVENT, handlePendingOps);
+    window.addEventListener(SYNC_FEEDBACK_EVENT, handleSyncFeedback);
 
     if (!navigator.onLine) {
       setShowBanner(true);
-      wasOfflineRef.current = true;
     }
 
     return () => {
+      window.clearTimeout(hideTimerRef.current);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener(PENDING_OPS_EVENT, handlePendingOps);
+      window.removeEventListener(SYNC_FEEDBACK_EVENT, handleSyncFeedback);
     };
   }, []);
 
@@ -57,9 +86,11 @@ export default function OfflineIndicator() {
         right: 0,
         zIndex: 9999,
         padding: '10px 16px',
-        background: isOnline
-          ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-          : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+        background: customTone === 'error'
+          ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
+          : (isOnline && !customMessage)
+            ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+            : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
         color: 'white',
         display: 'flex',
         alignItems: 'center',
@@ -71,7 +102,22 @@ export default function OfflineIndicator() {
         fontWeight: 500
       }}
     >
-      {isOnline ? (
+      {customMessage ? (
+        <>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <span>{customMessage}</span>
+          <button
+            onClick={() => setDismissed(true)}
+            style={{ background: 'rgba(255,255,255,0.25)', border: 'none', color: 'white', borderRadius: '4px', padding: '2px 8px', marginLeft: '4px', cursor: 'pointer', fontSize: '12px' }}
+          >
+            OK
+          </button>
+        </>
+      ) : isOnline ? (
         syncing ? (
           <>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
@@ -79,7 +125,7 @@ export default function OfflineIndicator() {
               <polyline points="1 20 1 14 7 14"></polyline>
               <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
             </svg>
-            <span>Online — syncing data...</span>
+            <span>Online — syncing {pendingCount} change{pendingCount !== 1 ? 's' : ''}...</span>
           </>
         ) : (
           <>
@@ -100,7 +146,11 @@ export default function OfflineIndicator() {
             <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
             <line x1="12" y1="20" x2="12.01" y2="20"></line>
           </svg>
-          <span>Offline — showing cached data</span>
+          <span>
+            {pendingCount > 0
+              ? `Offline — ${pendingCount} change${pendingCount !== 1 ? 's' : ''} will sync when you're back online`
+              : 'Offline — showing cached data'}
+          </span>
           <button
             onClick={() => setDismissed(true)}
             style={{

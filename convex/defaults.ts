@@ -33,7 +33,10 @@ export const DEFAULT_TIMETABLE: Record<string, Array<{ code: string; room?: stri
 
 export const TIMETABLE_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 
-export function normalizeBaseSubjectCode(subjectCode: string) {
+// Attendance rows are keyed by a per-slot code so that two hours of the same
+// subject on one day count separately: "PD", "PD-2", "CA-LAB", "CA-LAB-2".
+// Strips one such suffix; returns the input unchanged when there is none.
+function stripSlotSuffix(subjectCode: string) {
   if (subjectCode.endsWith("-LAB")) {
     return subjectCode.slice(0, -4);
   }
@@ -46,6 +49,35 @@ export function normalizeBaseSubjectCode(subjectCode: string) {
 
   return subjectCode;
 }
+
+export function normalizeBaseSubjectCode(subjectCode: string) {
+  let current = subjectCode;
+  for (let i = 0; i < 3; i += 1) {
+    const next = stripSlotSuffix(current);
+    if (next === current) break;
+    current = next;
+  }
+  return current;
+}
+
+/**
+ * Which subject an attendance row belongs to. A subject's own code can itself
+ * look like a slot suffix ("CS-101"), so the user's real codes win: the longest
+ * prefix of the row code that is a known subject is the owner. Falls back to
+ * plain suffix stripping when nothing matches (subject since deleted).
+ */
+export function resolveBaseSubjectCode(subjectCode: string, knownCodes: Set<string>) {
+  let current = subjectCode;
+  for (let i = 0; i < 4; i += 1) {
+    if (knownCodes.has(current)) return current;
+    const next = stripSlotSuffix(current);
+    if (next === current) break;
+    current = next;
+  }
+  return normalizeBaseSubjectCode(subjectCode);
+}
+
+export const MAX_TIMETABLE_SLOTS = 10;
 
 export function buildDefaultTimetableEntries() {
   const entries: Array<{

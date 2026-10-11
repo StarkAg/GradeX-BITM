@@ -53,6 +53,16 @@ export default defineSchema({
     .index("by_user_id_date_subject", ["userId", "date", "subjectCode"])
     .index("by_user_id_subject_code", ["userId", "subjectCode"]),
 
+  holidays: defineTable({
+    userId: v.string(),
+    date: v.string(),
+    label: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user_id", ["userId"])
+    .index("by_user_id_date", ["userId", "date"]),
+
   attendanceTotals: defineTable({
     userId: v.string(),
     subjectCode: v.string(),
@@ -92,20 +102,6 @@ export default defineSchema({
     .index("by_platform", ["platform"])
     .index("by_created_at", ["createdAt"]),
 
-  enquiries: defineTable({
-    registerNumber: v.optional(v.string()),
-    resultFound: v.optional(v.boolean()),
-    source: v.optional(v.string()),
-    payload: v.optional(v.any()),
-    createdAt: v.number(),
-  }).index("by_created_at", ["createdAt"]),
-
-  featureFlags: defineTable({
-    key: v.string(),
-    enabled: v.boolean(),
-    updatedAt: v.number(),
-  }).index("by_key", ["key"]),
-
   // Admin-settable key/value settings. `value` is a plain string (JSON-encoded
   // when a setting needs structure) so new settings never require a schema
   // change. Currently only "force_update_version" - see convex/appSettings.ts.
@@ -115,68 +111,4 @@ export default defineSchema({
     updatedAt: v.number(),
     createdAt: v.number(),
   }).index("by_key", ["key"]),
-
-  groupgridVisits: defineTable({
-    userId: v.optional(v.string()),
-    route: v.optional(v.string()),
-    metadata: v.optional(v.any()),
-    createdAt: v.number(),
-  }).index("by_created_at", ["createdAt"]),
-
-  sections: defineTable({
-    code: v.string(),
-    name: v.string(),
-    semester: v.optional(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  }).index("by_code", ["code"]),
-
-  groupFormations: defineTable({
-    sectionCode: v.string(),
-    subjectCode: v.string(),
-    title: v.string(),
-    status: v.string(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_section_code", ["sectionCode"])
-    .index("by_subject_code", ["subjectCode"]),
-
-  groups: defineTable({
-    formationId: v.string(),
-    name: v.string(),
-    capacity: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  }).index("by_formation_id", ["formationId"]),
-
-  groupMembers: defineTable({
-    groupId: v.string(),
-    userId: v.string(),
-    role: v.optional(v.string()),
-    createdAt: v.number(),
-  })
-    .index("by_group_id", ["groupId"])
-    .index("by_user_id", ["userId"]),
-
-  students: defineTable({
-    studentId: v.string(),
-    name: v.string(),
-    registerNumber: v.optional(v.string()),
-    sectionCode: v.optional(v.string()),
-    email: v.optional(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_student_id", ["studentId"])
-    .index("by_register_number", ["registerNumber"])
-    .index("by_section_code", ["sectionCode"]),
-
-  groupStudentMembers: defineTable({
-    groupId: v.string(),
-    studentId: v.string(),
-    createdAt: v.number(),
-  })
-    .index("by_group_id", ["groupId"])
-    .index("by_student_id", ["studentId"]),
 });

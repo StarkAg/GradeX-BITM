@@ -37,11 +37,13 @@ build
 
 .vercel
 
-# Large subject curriculum PDFs (local only)
-public/Subjects/
+# Local-only files that must never be published. Nothing secret belongs in
+# public/: Vite copies that whole folder into every build.
+.local/
 public/razorpay-key*.csv
-public/Sheets/
+public/Subjects/
 downloads/
+tmp/
 .github/
 
 # Admin954 - Hidden from git (local only)

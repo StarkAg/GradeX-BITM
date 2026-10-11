@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useAcademicSnapshot, useSetDailyAttendanceStatus } from '../lib/academic-data';
+import { useAcademicSnapshot, useSetDailyAttendanceStatus, useSetHoliday } from '../lib/academic-data';
 import { DEFAULT_TIMETABLE, getSubjectColor } from '../lib/subjects';
+import { buildDayClasses } from '../lib/attendance-codes';
 import { logActivity } from '../lib/activity-log';
 import { isViewOnlyMode } from '../lib/view-only';
 
@@ -8,14 +9,21 @@ const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
+// Holidays are drawn as a diagonal strike across the whole day card, in amber
+// so they stay distinct from the red weekend / pre-session tint.
+const HOLIDAY_COLOR = '#f59e0b';
+const HOLIDAY_STRIKE = `linear-gradient(to top right, transparent calc(50% - 1px), ${HOLIDAY_COLOR} calc(50% - 1px), ${HOLIDAY_COLOR} calc(50% + 1px), transparent calc(50% + 1px))`;
+
 export default function AttendanceCalendar() {
   const snapshot = useAcademicSnapshot();
   const setDailyAttendanceStatus = useSetDailyAttendanceStatus();
+  const setHolidayStatus = useSetHoliday();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
   const [subjects, setSubjects] = useState([]);
   const [timetable, setTimetable] = useState(DEFAULT_TIMETABLE);
   const [dailyAttendance, setDailyAttendance] = useState({});
+  const [holidays, setHolidays] = useState({});
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [hoveredDate, setHoveredDate] = useState(null);
   const [viewOnly, setViewOnly] = useState(false);
@@ -38,6 +46,7 @@ export default function AttendanceCalendar() {
       ...(snapshot.timetable || {}),
     });
     setDailyAttendance(snapshot.dailyAttendance || {});
+    setHolidays(snapshot.holidays || {});
   }, [snapshot]);
 
   // Disable scroll on this page
@@ -67,57 +76,9 @@ export default function AttendanceCalendar() {
     };
   }, [isMobile]);
 
-  // Get classes for a specific day of week - returns ALL occurrences (including duplicates)
-  // Each occurrence gets a unique attendance code so they count as separate hours
-  const getClassesForDay = (dayOfWeek) => {
-    const dayName = DAYS[dayOfWeek]; // Sun=0, Sat=6
-    if (!dayName || !timetable[dayName]) return [];
-    
-    const classes = [];
-    const subjectMap = {};
-    subjects.forEach(s => { subjectMap[s.code] = s; });
-    
-    // Track occurrences to create unique codes for duplicates
-    const occurrenceCount = {};
-    
-    timetable[dayName].forEach((cell, idx) => {
-      if (cell && cell.code && subjectMap[cell.code]) {
-        const isLab = cell.isLab || false;
-        const baseCode = cell.code;
-        
-        // Count occurrences of this subject code on this day
-        if (!occurrenceCount[baseCode]) {
-          occurrenceCount[baseCode] = 0;
-        }
-        occurrenceCount[baseCode]++;
-        
-        // Create unique attendance code for each occurrence
-        // First occurrence: just the code (e.g., "MM")
-        // Second occurrence: code with index (e.g., "MM-2")
-        // Lab classes: code with -LAB (e.g., "QDA-LAB")
-        let attendanceCode;
-        if (isLab) {
-          attendanceCode = `${baseCode}-LAB`;
-        } else if (occurrenceCount[baseCode] === 1) {
-          attendanceCode = baseCode;
-        } else {
-          attendanceCode = `${baseCode}-${occurrenceCount[baseCode]}`;
-        }
-        
-        // Add ALL occurrences, even duplicates - each tracked separately
-        classes.push({
-          ...subjectMap[baseCode],
-          slotIndex: idx,
-          room: cell.room || subjectMap[baseCode].room || 'LH-11',
-          isLab: isLab,
-          // Unique attendance code for each occurrence (so they count as separate hours)
-          attendanceCode: attendanceCode
-        });
-      }
-    });
-    
-    return classes;
-  };
+  // Every class hour on a weekday, each with its own attendance code (shared
+  // with Home, which marks the same records).
+  const getClassesForDay = (dayOfWeek) => buildDayClasses(subjects, timetable, DAYS[dayOfWeek]);
 
   // Toggle attendance for a class on a specific date
   const toggleAttendance = async (date, subjectCode, newStatus) => {
@@ -164,8 +125,49 @@ export default function AttendanceCalendar() {
     }
   };
 
+  // "Mark all" covers the hours actually timetabled for that weekday. On a day
+  // with none it used to fall back to every subject, so one tap on a Sunday
+  // added a class to all of them; extra classes are marked one by one instead.
+  const markAllForDay = (date, status) => {
+    getClassesForDay(date.getDay()).forEach(cls => {
+      toggleAttendance(date, cls.attendanceCode, status);
+    });
+  };
+
   const formatDateKey = (date) => {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  };
+
+  const isHoliday = (date) => Boolean(holidays[formatDateKey(date)]);
+
+  // Mark / unmark a whole day as a holiday. Independent of attendance - a
+  // holiday can be set on any date, including ones already marked.
+  const toggleHoliday = async (date) => {
+    if (viewOnly) return;
+    const dateStr = formatDateKey(date);
+    const nextIsHoliday = !holidays[dateStr];
+
+    setHolidays(prev => {
+      const updated = { ...prev };
+      if (nextIsHoliday) {
+        updated[dateStr] = 'Holiday';
+      } else {
+        delete updated[dateStr];
+      }
+      return updated;
+    });
+
+    try {
+      await setHolidayStatus({ date: dateStr, isHoliday: nextIsHoliday });
+      logActivity('holiday_updated', {
+        date: dateStr,
+        action: nextIsHoliday ? 'marked' : 'removed',
+        method: 'calendar'
+      });
+    } catch (err) {
+      console.error('Error syncing holiday:', err);
+      setHolidays(snapshot?.holidays || {});
+    }
   };
 
   // Get calendar days for current month
@@ -203,41 +205,23 @@ export default function AttendanceCalendar() {
     const dayData = dailyAttendance[dateStr] || {};
     
     // Get number of classes scheduled for this day
-    const dayOfWeek = date.getDay();
-    const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dayOfWeek];
-    const scheduledClasses = getClassesForDay(dayOfWeek);
+    const scheduledClasses = getClassesForDay(date.getDay());
     const totalHours = scheduledClasses.length;
     
     if (totalHours === 0) return null;
 
-    // Count present and absent for each scheduled class
-    const attendanceByCode = {};
-    Object.entries(dayData).forEach(([code, status]) => {
-      if (status === 'present' || status === 'absent') {
-        // Handle both base codes and attendance codes (e.g., "MM" and "MM-2", "QDA-LAB")
-        const baseCode = code.split('-')[0];
-        if (!attendanceByCode[baseCode]) {
-          attendanceByCode[baseCode] = [];
-        }
-        attendanceByCode[baseCode].push(status);
-      }
-    });
-
-    // Match scheduled classes with attendance data
+    // Each hour is looked up by its own code only. Falling back to the
+    // subject's base code made a second hour ("PD-2") show as marked the
+    // moment the first one ("PD") was.
     const presentHours = [];
     const absentHours = [];
-    
+
     scheduledClasses.forEach(cls => {
-      const baseCode = cls.code;
-      const attendanceCode = cls.attendanceCode || baseCode;
-      
-      // Check if we have attendance for this specific class
-      const status = dayData[attendanceCode] || dayData[baseCode];
-      
+      const status = dayData[cls.attendanceCode];
       if (status === 'present') {
-        presentHours.push(attendanceCode);
+        presentHours.push(cls.attendanceCode);
       } else if (status === 'absent') {
-        absentHours.push(attendanceCode);
+        absentHours.push(cls.attendanceCode);
       }
     });
 
@@ -359,6 +343,12 @@ export default function AttendanceCalendar() {
             const cannotMark = cannotMarkAttendance(date);
             const dayClasses = getClassesForDay(date.getDay());
             const hasClasses = dayClasses.length > 0;
+            const holiday = isHoliday(date);
+            const cellBackground = today
+              ? (weekend ? 'rgba(74, 222, 128, 0.2)' : 'rgba(74, 222, 128, 0.15)')
+              : holiday
+                ? 'rgba(245, 158, 11, 0.12)'
+                : ((weekend || beforeSession) ? 'rgba(248, 113, 113, 0.08)' : 'transparent');
 
             return (
               <div
@@ -370,7 +360,7 @@ export default function AttendanceCalendar() {
                   padding: isMobile ? '4px 2px' : '8px 6px',
                   borderRight: (idx + 1) % 7 !== 0 ? '1px solid var(--border-color)' : 'none',
                   borderBottom: idx < 35 ? '1px solid var(--border-color)' : 'none',
-                  background: today ? (weekend ? 'rgba(74, 222, 128, 0.2)' : 'rgba(74, 222, 128, 0.15)') : ((weekend || beforeSession) ? 'rgba(248, 113, 113, 0.08)' : 'transparent'),
+                  background: cellBackground,
                   opacity: isCurrentMonth ? 1 : 0.3,
                   cursor: isCurrentMonth ? 'pointer' : 'default',
                   transition: 'background 0.2s',
@@ -434,6 +424,23 @@ export default function AttendanceCalendar() {
                   </div>
                 )}
 
+                {/* Holiday - diagonal strike across the whole card */}
+                {holiday && (
+                  <div
+                    title={holidays[formatDateKey(date)] || 'Holiday'}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      background: HOLIDAY_STRIKE,
+                      pointerEvents: 'none',
+                      zIndex: 5
+                    }}
+                  />
+                )}
+
                 {/* Hover Icons - Enhanced Glass Overlay (Desktop only) */}
                 {!isMobile && isCurrentMonth && hoveredDate && hoveredDate.getTime() === date.getTime() && (
                   <div 
@@ -462,16 +469,11 @@ export default function AttendanceCalendar() {
                     }}
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {!viewOnly && !cannotMark && (
+                    {!viewOnly && !cannotMark && hasClasses && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          const classes = getClassesForDay(date.getDay());
-                          const allSubjects = classes.length > 0 ? classes : subjects;
-                          allSubjects.forEach(cls => {
-                            const attendanceCode = cls.attendanceCode || cls.code;
-                            toggleAttendance(date, attendanceCode, 'present');
-                          });
+                          markAllForDay(date, 'present');
                         }}
                         style={{
                           padding: '8px 6px',
@@ -517,16 +519,11 @@ export default function AttendanceCalendar() {
                         <span style={{ fontSize: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.3px' }}>All</span>
                       </button>
                     )}
-                    {!viewOnly && !cannotMark && (
+                    {!viewOnly && !cannotMark && hasClasses && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          const classes = getClassesForDay(date.getDay());
-                          const allSubjects = classes.length > 0 ? classes : subjects;
-                          allSubjects.forEach(cls => {
-                            const attendanceCode = cls.attendanceCode || cls.code;
-                            toggleAttendance(date, attendanceCode, 'absent');
-                          });
+                          markAllForDay(date, 'absent');
                         }}
                         style={{
                           padding: '8px 6px',
@@ -660,6 +657,11 @@ export default function AttendanceCalendar() {
                   <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
                     {selectedDate.getDate()} {MONTH_NAMES[selectedDate.getMonth()]} {selectedDate.getFullYear()}
                   </p>
+                  {isHoliday(selectedDate) && (
+                    <span style={{ display: 'inline-block', marginTop: '6px', padding: '3px 8px', borderRadius: '999px', background: 'rgba(245, 158, 11, 0.15)', border: `1px solid ${HOLIDAY_COLOR}`, color: HOLIDAY_COLOR, fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Holiday
+                    </span>
+                  )}
                 </div>
                 <button onClick={() => setSelectedDate(null)} style={{ padding: '8px', border: '1px solid var(--border-color)', background: 'transparent', borderRadius: '8px', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex' }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -676,17 +678,11 @@ export default function AttendanceCalendar() {
                   This class hasn't happened yet - attendance can be marked once it's over.
                 </div>
               )}
-              {!viewOnly && !cannotMarkAttendance(selectedDate) && (
+              {!viewOnly && !cannotMarkAttendance(selectedDate) && getClassesForDay(selectedDate.getDay()).length > 0 && (
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button
                     onClick={() => {
-                      const classes = getClassesForDay(selectedDate.getDay());
-                      const allSubjects = classes.length > 0 ? classes : subjects;
-                      // Use attendanceCode for tracking (same for lab and normal)
-                      allSubjects.forEach(cls => {
-                        const attendanceCode = cls.attendanceCode || cls.code;
-                        toggleAttendance(selectedDate, attendanceCode, 'present');
-                      });
+                      markAllForDay(selectedDate, 'present');
                     }}
                     style={{ flex: 1, padding: isMobile ? '8px' : '10px', borderRadius: '8px', cursor: 'pointer', background: 'rgba(74, 222, 128, 0.15)', color: '#4ade80', fontWeight: 600, fontSize: isMobile ? '11px' : '13px', border: '1px solid #4ade80', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                   >
@@ -694,19 +690,42 @@ export default function AttendanceCalendar() {
                   </button>
                   <button
                     onClick={() => {
-                      const classes = getClassesForDay(selectedDate.getDay());
-                      const allSubjects = classes.length > 0 ? classes : subjects;
-                      // Use attendanceCode for tracking (same for lab and normal)
-                      allSubjects.forEach(cls => {
-                        const attendanceCode = cls.attendanceCode || cls.code;
-                        toggleAttendance(selectedDate, attendanceCode, 'absent');
-                      });
+                      markAllForDay(selectedDate, 'absent');
                     }}
                     style={{ flex: 1, padding: isMobile ? '8px' : '10px', borderRadius: '8px', cursor: 'pointer', background: 'rgba(248, 113, 113, 0.15)', color: '#f87171', fontWeight: 600, fontSize: isMobile ? '11px' : '13px', border: '1px solid #f87171', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                   >
                     ✗ {isMobile ? 'All Absent' : 'Mark All Absent'}
                   </button>
                 </div>
+              )}
+              {!viewOnly && (
+                <button
+                  onClick={() => toggleHoliday(selectedDate)}
+                  style={{
+                    width: '100%',
+                    marginTop: '10px',
+                    padding: isMobile ? '8px' : '10px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    background: isHoliday(selectedDate) ? HOLIDAY_COLOR : 'rgba(245, 158, 11, 0.15)',
+                    color: isHoliday(selectedDate) ? '#000' : HOLIDAY_COLOR,
+                    fontWeight: 600,
+                    fontSize: isMobile ? '11px' : '13px',
+                    border: `1px solid ${HOLIDAY_COLOR}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                    <line x1="16" y1="2" x2="16" y2="6"/>
+                    <line x1="8" y1="2" x2="8" y2="6"/>
+                    <line x1="4" y1="21" x2="20" y2="5"/>
+                  </svg>
+                  {isHoliday(selectedDate) ? 'Remove Holiday' : 'Mark as Holiday'}
+                </button>
               )}
             </div>
 

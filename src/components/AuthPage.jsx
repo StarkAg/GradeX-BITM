@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useSignIn, useSignUp } from '@clerk/clerk-react';
 import {
   getClerkErrorMessage,
-  syncClerkUserToLocalStorage,
 } from '../lib/clerk';
 
 // const SOCIAL_PROVIDERS = [
@@ -123,12 +122,7 @@ export default function AuthPage({ onAuthSuccess }) {
 
     if (result.status === 'complete' && result.createdSessionId) {
       await setSignUpActive({ session: result.createdSessionId });
-      const bridgeUser = syncClerkUserToLocalStorage({
-        id: result.createdUserId || sanitizedEmail,
-        username: sanitizedEmail,
-        unsafeMetadata: {},
-      });
-      onAuthSuccess(bridgeUser);
+      onAuthSuccess();
       return 'complete';
     }
 
@@ -202,12 +196,7 @@ export default function AuthPage({ onAuthSuccess }) {
       if (activeAttempt?.status === 'complete') {
         await activateSession(activeAttempt, identifier);
 
-        const bridgeUser = syncClerkUserToLocalStorage({
-          id: activeAttempt?.createdSessionId || identifier,
-          username: identifier,
-          unsafeMetadata: {},
-        });
-        onAuthSuccess(bridgeUser);
+        onAuthSuccess();
         return;
       }
 
@@ -225,8 +214,10 @@ export default function AuthPage({ onAuthSuccess }) {
     } catch (err) {
       console.error('Login error:', err);
       const message = getClerkErrorMessage(err, 'Login failed. Please try again.');
+      // Matched on Clerk's error code; its wording is not a stable contract.
+      const errorCode = err?.errors?.[0]?.code;
 
-      if (message === "Couldn't find your account.") {
+      if (errorCode === 'form_identifier_not_found' || message === "Couldn't find your account.") {
         if (!isValidEmail(formData.username)) {
           setError('Use a valid email address to create a new account.');
         } else {
@@ -239,7 +230,7 @@ export default function AuthPage({ onAuthSuccess }) {
             setError(getClerkErrorMessage(signUpError, 'Could not start sign-up. Please try again.'));
           }
         }
-      } else if (message === 'Identifier is invalid.') {
+      } else if (errorCode === 'form_param_format_invalid' || message === 'Identifier is invalid.') {
         setError('Enter a valid email address.');
       } else {
         setError(message);
@@ -271,13 +262,7 @@ export default function AuthPage({ onAuthSuccess }) {
 
         await setSignUpActive({ session: verifiedSignUp.createdSessionId });
 
-        const normalizedEmail = formData.username.toLowerCase().trim();
-        const bridgeUser = syncClerkUserToLocalStorage({
-          id: verifiedSignUp.createdUserId || normalizedEmail,
-          username: normalizedEmail,
-          unsafeMetadata: {},
-        });
-        onAuthSuccess(bridgeUser);
+        onAuthSuccess();
         return;
       }
 
@@ -291,13 +276,7 @@ export default function AuthPage({ onAuthSuccess }) {
 
       await activateSession(activeAttempt, formData.username.toLowerCase().trim());
 
-      const normalizedUsername = formData.username.toLowerCase().trim();
-      const bridgeUser = syncClerkUserToLocalStorage({
-        id: activeAttempt?.createdSessionId || normalizedUsername,
-        username: normalizedUsername,
-        unsafeMetadata: {},
-      });
-      onAuthSuccess(bridgeUser);
+      onAuthSuccess();
     } catch (err) {
       console.error('Client trust verification error:', err);
       setError(getClerkErrorMessage(err, 'Verification failed. Please try again.'));

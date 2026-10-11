@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAcademicSnapshot, useCurrentProfile, useSetDailyAttendanceStatus } from '../lib/academic-data';
 import { DEFAULT_TIMETABLE, getSubjectColor } from '../lib/subjects';
+import { buildDayClasses } from '../lib/attendance-codes';
 import { logActivity } from '../lib/activity-log';
 import { isViewOnlyMode } from '../lib/view-only';
 
@@ -22,44 +23,12 @@ function formatDateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+// Same per-hour attendance codes as the Calendar, plus the printed time.
 function buildTodayClasses(subjects, timetable, dayName) {
-  const subjectMap = {};
-  subjects.forEach((subject, idx) => {
-    subjectMap[subject.code] = { ...subject, colorIndex: idx };
-  });
-
-  const occurrenceCount = {};
-
-  return (timetable[dayName] || [])
-    .map((cell, slotIndex) => {
-      if (!cell?.code) return null;
-
-      const subject = subjectMap[cell.code] || {
-        code: cell.code,
-        name: cell.code,
-        room: cell.room || 'LH-11',
-        colorIndex: 0,
-      };
-      const baseCode = cell.code;
-      occurrenceCount[baseCode] = (occurrenceCount[baseCode] || 0) + 1;
-
-      let attendanceCode = baseCode;
-      if (cell.isLab) {
-        attendanceCode = `${baseCode}-LAB`;
-      } else if (occurrenceCount[baseCode] > 1) {
-        attendanceCode = `${baseCode}-${occurrenceCount[baseCode]}`;
-      }
-
-      return {
-        ...subject,
-        attendanceCode,
-        isLab: Boolean(cell.isLab),
-        room: cell.room || subject.room || 'LH-11',
-        slotIndex,
-        time: TIME_SLOTS[slotIndex] || `Period ${slotIndex + 1}`,
-      };
-    })
-    .filter(Boolean);
+  return buildDayClasses(subjects, timetable, dayName).map((cls) => ({
+    ...cls,
+    time: TIME_SLOTS[cls.slotIndex] || `Period ${cls.slotIndex + 1}`,
+  }));
 }
 
 export default function Home() {
@@ -110,7 +79,24 @@ export default function Home() {
     };
   }, [isMobile]);
 
-  const today = new Date();
+  // An installed app left open overnight is resumed, not reloaded. Without
+  // this it kept yesterday's date, listed yesterday's classes and filed this
+  // morning's marks under yesterday.
+  const [today, setToday] = useState(() => new Date());
+  useEffect(() => {
+    const refreshToday = () => {
+      const now = new Date();
+      setToday((prev) => (formatDateKey(prev) === formatDateKey(now) ? prev : now));
+    };
+    const intervalId = window.setInterval(refreshToday, 60 * 1000);
+    document.addEventListener('visibilitychange', refreshToday);
+    window.addEventListener('focus', refreshToday);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', refreshToday);
+      window.removeEventListener('focus', refreshToday);
+    };
+  }, []);
   const todayName = DAYS[today.getDay()];
   const todayKey = formatDateKey(today);
   

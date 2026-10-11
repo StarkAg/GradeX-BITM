@@ -1,10 +1,10 @@
 import { query } from "./_generated/server";
-import { requireIdentity } from "./lib/auth";
+import { requireAdmin } from "./lib/auth";
 
 export const getAdmin954Overview = query({
   args: {},
   handler: async (ctx) => {
-    await requireIdentity(ctx);
+    await requireAdmin(ctx);
 
     const [users, totals] = await Promise.all([
       ctx.db.query("users").collect(),

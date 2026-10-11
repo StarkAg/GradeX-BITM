@@ -254,7 +254,7 @@
   background: var(--hover-bg);
 }
 
-/* EXACT CSS FROM SRM TT - TimetableContainer */
+/* TimetableContainer */
 .timetable-container {
   width: 100%;
   max-width: 100%;
@@ -265,7 +265,7 @@
   box-sizing: border-box;
 }
 
-/* Logo header - matching SRM TT */
+/* Logo header */
 .timetable-header-logos {
   width: 100%;
   display: flex;
