@@ -15,6 +15,7 @@ Object.defineProperty(globalThis, 'navigator', { value: { get onLine() { return 
 const {
   flushPendingOps,
   hasPendingOpsFor,
+  isLocalCopyReady,
   queueLocalWrite,
   readJson,
   readPendingOps,
@@ -120,6 +121,18 @@ describe('sending the queue', () => {
     await flushPendingOps(send, 'user_a');
     expect(send.mock.calls.filter(([type]) => type === 'daily')).toHaveLength(3);
     expect(readPendingOps()).toEqual([]);
+  });
+});
+
+describe('the device copy', () => {
+  it('is ready only once it holds this account\'s own data', () => {
+    expect(isLocalCopyReady()).toBe(false);
+    localStorage.setItem('gradex_subjects', '[]');
+    expect(isLocalCopyReady()).toBe(false);
+    localStorage.setItem('gradex_cache_owner', 'someone_else');
+    expect(isLocalCopyReady()).toBe(false);
+    localStorage.setItem('gradex_cache_owner', 'user_a');
+    expect(isLocalCopyReady()).toBe(true);
   });
 });
 

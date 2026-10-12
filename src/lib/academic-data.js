@@ -9,6 +9,7 @@ import {
   hasPendingOpsFor,
   isBrowserOnline,
   isCacheOwnedBy,
+  isLocalCopyReady,
   normalizeAttendanceTotals,
   queueLocalWrite,
   readJson,
@@ -229,14 +230,17 @@ export function useDeleteCurrentUserData() {
   };
 }
 
-// One hook per academic write. Online with a live session it is an ordinary
-// Convex mutation; otherwise it is applied to the offline copy and queued.
+// One hook per academic write, local-first: the write goes to this device's
+// copy and the queue (lib/pending-writes.js) and returns at once; the queue's
+// sender pushes it to Convex. The one exception is the first moments on a new
+// device, before it holds a copy to write to - then, online, the write goes
+// straight to Convex.
 function useQueuedMutation(type) {
   const { isAuthenticated } = useConvexAuth();
   const mutation = useMutation(PENDING_MUTATIONS[type]);
 
   return async (args) => {
-    if (isAuthenticated && isBrowserOnline()) return mutation(args);
+    if (isAuthenticated && isBrowserOnline() && !isLocalCopyReady()) return mutation(args);
     queueLocalWrite(type, args);
     return null;
   };

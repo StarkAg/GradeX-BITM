@@ -100,18 +100,46 @@ describe('the app against a real backend', () => {
     const { convex } = await import('../src/lib/convex');
     const { anyApi } = await import('convex/server');
     await wait(async () => expect((await convex.query(anyApi.users.getCurrentProfile, {})).name).toBe('E2E Student'));
-    // Mark a class from Home (on a day that has classes) and see it reach
-    // the server under this account.
+    // Mark a class from Home (on a day that has classes): it is on the
+    // device at once and reaches the server under this account.
+    const serverMarks = async () => {
+      const snapshot = await convex.query(anyApi.academics.getCurrentSnapshot, {});
+      return Object.values(snapshot.dailyAttendance).flatMap((day) => Object.values(day));
+    };
+    const localMarks = () => Object.values(JSON.parse(localStorage.getItem('gradex_daily_attendance') || '{}')).flatMap((day) => Object.values(day));
+    const pending = () => JSON.parse(localStorage.getItem('gradex_pending_ops') || '[]').length;
+
     const markButtons = screen.queryAllByRole('button', { name: /^Mark present/ });
-    if (markButtons.length > 0) {
+    if (markButtons.length > 1) {
       fireEvent.click(markButtons[0]);
-      await wait(async () => {
-        const snapshot = await convex.query(anyApi.academics.getCurrentSnapshot, {});
-        const marks = Object.values(snapshot.dailyAttendance).flatMap((day) => Object.values(day));
-        expect(marks).toEqual(['present']);
-        const totals = Object.values(snapshot.attendanceTotals);
-        expect(totals).toEqual([{ attended: 1, conducted: 1 }]);
-      });
+      expect(localMarks()).toEqual(['present']);
+      await wait(async () => expect(await serverMarks()).toEqual(['present']));
+      await wait(() => expect(pending()).toBe(0));
+
+      // Offline: the next mark stays on the device, queued, and the server
+      // does not have it. Restarting the app offline keeps it.
+      Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => false });
+      window.dispatchEvent(new Event('offline'));
+      fireEvent.click(screen.getAllByRole('button', { name: /^Mark absent/ })[1]);
+      expect(localMarks().sort()).toEqual(['absent', 'present']);
+      expect(pending()).toBe(1);
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      expect(await serverMarks()).toEqual(['present']);
+
+      app.unmount();
+      app = await mountApp();
+      await wait(() => expect(screen.getByText('GradeX - BITM')).toBeTruthy());
+      expect(localMarks().sort()).toEqual(['absent', 'present']);
+      expect(pending()).toBe(1);
+
+      // Back online: it is pushed without anyone doing anything.
+      Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => true });
+      window.dispatchEvent(new Event('online'));
+      await wait(async () => expect((await serverMarks()).sort()).toEqual(['absent', 'present']));
+      await wait(() => expect(pending()).toBe(0));
+      const totals = Object.values((await convex.query(anyApi.academics.getCurrentSnapshot, {})).attendanceTotals);
+      expect(totals.reduce((sum, t) => sum + t.conducted, 0)).toBe(2);
+      expect(totals.reduce((sum, t) => sum + t.attended, 0)).toBe(1);
     }
 
     // Sign out: the account button in the sidebar opens a panel with it.

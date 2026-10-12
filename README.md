@@ -15,8 +15,11 @@ Live: https://gradex-bitm.vercel.app (canonical: https://bitm.gradex.bond)
   directly for classes held before a student started marking day by day.
 - **Calendar** - mark any past day hour by hour; mark holidays.
 - **Subjects** - add, edit and remove subjects and their timetable slots.
-- Installable PWA. Works offline: the last synced data is shown, and anything
-  marked offline is queued on the device and sent when the connection returns.
+- Installable PWA, and local-first: everything a student marks or edits is
+  written to the device at once and shown from there, then pushed to Convex in
+  the background - straight away with a connection, whenever one returns
+  without. Only signing in, changing the name and deleting the account need
+  the network.
 
 ## Stack
 

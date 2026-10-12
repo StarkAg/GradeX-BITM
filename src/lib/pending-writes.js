@@ -1,11 +1,12 @@
-// Writes made while Convex cannot take them, and the offline copy they are
-// applied to in the meantime. No React in here, so it can be tested directly.
+// The device's own copy of a student's data, and the queue of writes on their
+// way to Convex. No React in here, so it can be tested directly.
 //
-// A write made in the first second after launch (before the server has
-// accepted the session) or while the phone is offline used to go to localStorage
-// only, and the next server snapshot then wrote straight over it: the mark was
-// on screen and then silently gone. Such writes are now also queued and sent
-// once Convex is reachable.
+// The app is local-first. Marking a class, changing a total, a holiday or the
+// timetable is written to this device at once and shown from here; it is then
+// sent to Convex in the background, immediately when there is a connection
+// and whenever one returns when there is not. Nothing a student does waits on
+// the network, and nothing is lost by closing the app before it has synced:
+// the queue is kept in localStorage.
 //
 // Every queued write states a final value (this class is "present", this
 // subject's total is 12/15), never a change, so sending one twice is harmless.
@@ -73,6 +74,16 @@ export function normalizeAttendanceTotals(input) {
 export function isCacheOwnedBy(ownerId) {
   const cacheOwner = readString(ACADEMIC_CACHE_OWNER_KEY);
   return !cacheOwner || cacheOwner === ownerId;
+}
+
+// True once this device holds its own copy of the signed-in student's data
+// (written by the first server snapshot). Until then a write has nothing real
+// to be applied to locally.
+export function isLocalCopyReady() {
+  const ownerId = readString('gradex_user_id');
+  return Boolean(ownerId)
+    && readString(ACADEMIC_CACHE_OWNER_KEY) === ownerId
+    && localStorage.getItem('gradex_subjects') !== null;
 }
 
 // Claims the cache for the current user before a local write, discarding a
