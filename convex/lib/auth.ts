@@ -1,39 +1,41 @@
+import { getAuthUserId } from "@convex-dev/auth/server";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 
-export async function requireIdentity(ctx: QueryCtx | MutationCtx) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) {
+/**
+ * The signed-in user's id, which is also the key every academic row is stored
+ * under. The account is looked up, not just the token: a token outlives a
+ * deleted account by up to an hour, and must not be able to write rows for it.
+ */
+export async function requireUserId(ctx: QueryCtx | MutationCtx) {
+  const userId = await getAuthUserId(ctx);
+  if (userId === null || (await ctx.db.get(userId)) === null) {
     throw new Error("Not authenticated");
   }
 
-  return identity;
-}
-
-function envList(value: string | undefined) {
-  return (value || "")
-    .split(",")
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean);
+  return userId;
 }
 
 /**
  * Admin-only functions. Being signed in is not enough: every student has an
- * account. Admins are named in the Convex environment, as Clerk user ids
- * (ADMIN_CLERK_USER_IDS) and/or verified sign-in emails (ADMIN_EMAILS), both
- * comma-separated. With neither set, nobody is an admin.
+ * account. Admins are the user ids listed, comma-separated, in the Convex
+ * environment variable ADMIN_USER_IDS. With it unset, nobody is an admin.
+ *
+ * Ids, not emails: an email address here is only what someone typed when
+ * signing up, never proof of who they are.
  */
 export async function requireAdmin(ctx: QueryCtx | MutationCtx) {
-  const identity = await requireIdentity(ctx);
+  const userId = await requireUserId(ctx);
 
-  const adminIds = envList(process.env.ADMIN_CLERK_USER_IDS);
-  const adminEmails = envList(process.env.ADMIN_EMAILS);
-  const email = identity.emailVerified === false ? "" : (identity.email || "").toLowerCase();
+  const adminIds = (process.env.ADMIN_USER_IDS || "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 
-  if (adminIds.includes(identity.subject.toLowerCase()) || (email && adminEmails.includes(email))) {
-    return identity;
+  if (!adminIds.includes(userId)) {
+    throw new Error("Not authorized");
   }
 
-  throw new Error("Not authorized");
+  return userId;
 }
 
 export function nowTs() {

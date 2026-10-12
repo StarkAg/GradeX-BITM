@@ -11,9 +11,11 @@
 import type * as academics from "../academics.js";
 import type * as admin from "../admin.js";
 import type * as appSettings from "../appSettings.js";
+import type * as auth from "../auth.js";
 import type * as defaults from "../defaults.js";
 import type * as demo from "../demo.js";
 import type * as events from "../events.js";
+import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as maintenance from "../maintenance.js";
 import type * as users from "../users.js";
@@ -28,9 +30,11 @@ declare const fullApi: ApiFromModules<{
   academics: typeof academics;
   admin: typeof admin;
   appSettings: typeof appSettings;
+  auth: typeof auth;
   defaults: typeof defaults;
   demo: typeof demo;
   events: typeof events;
+  http: typeof http;
   "lib/auth": typeof lib_auth;
   maintenance: typeof maintenance;
   users: typeof users;

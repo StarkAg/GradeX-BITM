@@ -26,15 +26,15 @@ export default class ErrorBoundary extends React.Component {
   handleClearAndReload = async () => {
     try {
       // Drops the cached app, service worker and offline copy. Kept: who is
-      // signed in (including Clerk's own keys), display preferences, and any
-      // attendance not yet sent to the server.
-      const clerkKeys = Object.keys(window.localStorage).filter((key) => /clerk/i.test(key));
+      // signed in (the sign-in tokens Convex Auth stores), display
+      // preferences, and any attendance not yet sent to the server.
+      const tokenKeys = Object.keys(window.localStorage).filter((key) => key.startsWith('__convexAuth'));
       await hardRefreshApp({
         clearLocalStorage: true,
         preserveLocalStorageKeys: [
           ...PRESERVED_UI_STORAGE_KEYS,
           ...PRESERVED_AUTH_STORAGE_KEYS,
-          ...clerkKeys,
+          ...tokenKeys,
           PENDING_OPS_KEY,
         ],
         clearSessionStorage: true,

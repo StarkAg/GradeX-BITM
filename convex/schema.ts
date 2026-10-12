@@ -1,18 +1,39 @@
+import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  // Sign-in tables (sessions, password accounts, refresh tokens).
+  ...authTables,
+
+  // One row per account. Replaces Convex Auth's own `users` table: the first
+  // block is the fields and indexes it requires, the second is this app's.
   users: defineTable({
-    clerkUserId: v.string(),
-    username: v.string(),
-    name: v.string(),
+    name: v.optional(v.string()),
+    image: v.optional(v.string()),
     email: v.optional(v.string()),
+    emailVerificationTime: v.optional(v.number()),
+    phone: v.optional(v.string()),
+    phoneVerificationTime: v.optional(v.number()),
+    isAnonymous: v.optional(v.boolean()),
+
+    username: v.optional(v.string()),
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+
+    // Only on rows left from the Clerk sign-in (before October 2026). Such a
+    // row is an account nobody has signed back in to yet: its attendance is
+    // still stored under clerkUserId and moves to the new account, by email,
+    // the first time that person signs in (see relinkLegacyAccount in
+    // users.ts). The row is deleted at that point.
+    clerkUserId: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  }).index("by_clerk_user_id", ["clerkUserId"]),
+  })
+    .index("email", ["email"])
+    .index("phone", ["phone"])
+    .index("by_clerk_user_id", ["clerkUserId"]),
 
   subjects: defineTable({
     userId: v.string(),

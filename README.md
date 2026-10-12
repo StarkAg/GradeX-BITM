@@ -23,7 +23,7 @@ Live: https://gradex-bitm.vercel.app (canonical: https://bitm.gradex.bond)
 | Part | What |
 | --- | --- |
 | Frontend | React 18 + Vite, `vite-plugin-pwa` (Workbox) |
-| Sign-in | Clerk |
+| Sign-in | Convex Auth, email and password (`convex/auth.ts`) |
 | Backend | Convex (`convex/`) |
 | Hosting | Vercel, deployed from pushes to `main` |
 
@@ -32,17 +32,20 @@ Live: https://gradex-bitm.vercel.app (canonical: https://bitm.gradex.bond)
 ```
 convex/                 schema and server functions
   academics.ts          subjects, timetable, attendance, holidays
-  users.ts              profile sync, account deletion
+  auth.ts               sign-in: email and password, one-year sessions
+  users.ts              profile, account deletion, carrying over pre-October-2026 accounts
   appSettings.ts        force-update version gate
   defaults.ts           the default BBA III A subjects and timetable
 src/
   App.jsx               shell, routing, force-update, connectivity
   components/           one file per screen
   lib/academic-data.js  hooks every screen reads and writes through
+  lib/session.js        what the device remembers about who is signed in
   lib/pending-writes.js offline write queue and the offline copy
   lib/attendance-codes.js  per-hour attendance keys (shared by Home and Calendar)
   lib/subjects.js       client copy of convex/defaults.ts - keep the two in sync
 tests/                  vitest: Convex logic, attendance keys, offline queue
+tests-e2e/              the real app in jsdom against a real (dev) deployment
 android/                Capacitor Android shell around the live site
 capacitor-shell/        the one page the shell shows if it has never been online
 ```
@@ -56,10 +59,29 @@ npm test
 npm run build
 ```
 
-`.env.local` needs `VITE_CLERK_PUBLISHABLE_KEY`, `VITE_CONVEX_URL` and
-`CONVEX_DEPLOYMENT`. The Convex deployment needs `CLERK_JWT_ISSUER_DOMAIN`
-(or `CLERK_FRONTEND_API_URL`) and, for the admin overview, `ADMIN_EMAILS`
-and/or `ADMIN_CLERK_USER_IDS` (comma-separated).
+`.env.local` needs `VITE_CONVEX_URL` and `CONVEX_DEPLOYMENT`.
+
+Each Convex deployment needs its sign-in keys once:
+
+```bash
+node scripts/setup-auth-keys.mjs          # dev
+node scripts/setup-auth-keys.mjs --prod   # production (refuses if keys exist)
+```
+
+`npm run test:e2e` drives the real screens (create account, mark attendance,
+restart, sign out, sign in) against a deployment named in `E2E_CONVEX_URL`.
+It creates and deletes a throwaway account, so use the dev deployment.
+
+## Accounts
+
+- Sign-in is email and password, held in Convex. A session lasts a year.
+- There is no "forgot password" email. Set a new password for someone with
+  `npx convex run maintenance:setUserPassword '{"email":"...","password":"..."}' --prod`.
+- The admin overview is open only to user ids listed in the Convex variable
+  `ADMIN_USER_IDS` (comma-separated `users` ids).
+- Accounts made before October 2026 used Clerk. Their rows stay in `users`
+  with a `clerkUserId` until the owner creates an account here with the same
+  email; `users:syncCurrentUser` then moves their attendance across.
 
 ## Releasing
 

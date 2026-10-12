@@ -1,16 +1,16 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { DEFAULT_SUBJECTS } from "./defaults";
-import { nowTs, requireIdentity } from "./lib/auth";
+import { nowTs, requireUserId } from "./lib/auth";
 
 export const listSubjectCatalog = query({
   args: {},
   handler: async (ctx) => {
     // The caller's own subjects - this used to read every student's rows.
-    const identity = await requireIdentity(ctx);
+    const userId = await requireUserId(ctx);
     const subjects = await ctx.db
       .query("subjects")
-      .withIndex("by_user_id", (q) => q.eq("userId", identity.subject))
+      .withIndex("by_user_id", (q) => q.eq("userId", userId))
       .collect();
     if (!subjects.length) {
       return DEFAULT_SUBJECTS;
@@ -36,7 +36,7 @@ export const setFacultyAttendance = mutation({
     status: v.union(v.literal("present"), v.literal("absent"), v.null()),
   },
   handler: async (ctx, args) => {
-    await requireIdentity(ctx);
+    await requireUserId(ctx);
     const fields = [args.facultyId, args.studentId, args.studentName, args.subjectCode, args.classroom];
     if (!/^\d{4}-\d{2}-\d{2}$/.test(args.date) || fields.some((value) => value.length > 120)) {
       throw new Error("Invalid attendance entry");
@@ -88,7 +88,7 @@ export const getStudentFacultyAttendance = query({
     studentId: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireIdentity(ctx);
+    await requireUserId(ctx);
     const rows = await ctx.db
       .query("facultyAttendance")
       .withIndex("by_student_id", (q) => q.eq("studentId", args.studentId))

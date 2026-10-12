@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, Routes, Route, Navigate } from 'react-router-dom';
-import { useAuth, useClerk, useUser } from '@clerk/clerk-react';
+import { useAuthActions } from '@convex-dev/auth/react';
 import { useConvexAuth, useQuery } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Analytics } from '@vercel/analytics/react';
@@ -12,12 +12,8 @@ import {
 } from './lib/convexAvailability';
 import { buildRefreshUrl, hardRefreshApp } from './lib/appUpdate';
 
-// Clerk hydrating its session has real (usually sub-second, cache-backed)
-// latency - this replaces the flash of plain gray text with a spinner so the
-// wait reads as "working" rather than "stuck". It no longer gates on the
-// Convex reachability probe or the Clerk<->Convex JWT handshake; those run in
-// the background so the app shell isn't held hostage by Convex being slow or
-// unreachable (see `mainScreen` below).
+// Shown only while there is nothing to draw yet: the first moments after a
+// sign-in on a device that has no cached copy of the student's data.
 function AuthHandshakeSpinner({ label }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px', minHeight: '100vh', padding: '40px' }}>
@@ -45,7 +41,6 @@ import ManualAttendance from './components/ManualAttendance';
 import Subjects from './components/Subjects';
 import Home from './components/Home';
 import AuthPage from './components/AuthPage';
-import AuthRedirectCallback from './components/AuthRedirectCallback';
 import AttendanceCalendar from './components/AttendanceCalendar';
 import DemoLogin from './components/DemoLogin';
 import FacultyAttendancePanel from './components/FacultyAttendancePanel';
@@ -61,13 +56,11 @@ import {
   useUpdateCurrentProfile,
 } from './lib/academic-data';
 import {
+  cacheIdentity,
   clearLocalAuthCache,
-  getClerkDisplayName,
-  getClerkUsername,
   hasCachedIdentity,
-  splitDisplayName,
-  syncClerkUserToLocalStorage,
-} from './lib/clerk';
+} from './lib/session';
+import { adoptPendingOps } from './lib/pending-writes';
 
 const NAV_ITEMS = [
   { id: 'home', label: 'Home', path: '/' },
@@ -83,9 +76,6 @@ const NAV_ITEMS = [
 ];
 const AUDIO_URL = '/back-in-black.mp3';
 const CONVEX_HEALTH_POLL_MS = 20 * 1000;
-// How long to wait for Clerk before falling back to cached data. Only reached
-// when the browser still reports itself online but Clerk's CDN is unreachable.
-const AUTH_LOAD_TIMEOUT_MS = 6 * 1000;
 const SPLASH_PROGRESS_INTERVAL_MS = 20;
 const SPLASH_PROGRESS_STEP = 4;
 const SPLASH_EXIT_DELAY_MS = 150;
@@ -104,77 +94,13 @@ function ForceUpdateProbe({ onChange }) {
   return null;
 }
 
-function ConvexGate({ message, onLogout }) {
-  return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '24px',
-      background: 'var(--bg-primary)',
-      color: 'var(--text-primary)',
-    }}>
-      <div style={{
-        width: '100%',
-        maxWidth: '560px',
-        padding: '24px',
-        borderRadius: '16px',
-        border: '1px solid var(--border-color)',
-        background: 'var(--card-bg)',
-        boxShadow: '0 20px 50px rgba(0, 0, 0, 0.25)',
-      }}>
-        <h2 style={{ margin: '0 0 12px', fontSize: '1.3rem' }}>Convex Connection Required</h2>
-        <p style={{ margin: '0 0 12px', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
-          {message}
-        </p>
-        <p style={{ margin: '0 0 18px', lineHeight: 1.6, color: 'var(--text-tertiary)', fontSize: '12px' }}>
-          {APP_VERSION}{APP_BUILD_DATE ? ` • ${APP_BUILD_DATE.split('T')[0]}` : ''}
-        </p>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            style={{
-              padding: '10px 14px',
-              borderRadius: '10px',
-              border: '1px solid var(--border-color)',
-              background: 'var(--text-primary)',
-              color: 'var(--bg-primary)',
-              cursor: 'pointer',
-              fontWeight: 700,
-            }}
-          >
-            Reload
-          </button>
-          {onLogout && (
-            <button
-              type="button"
-              onClick={onLogout}
-              style={{
-                padding: '10px 14px',
-                borderRadius: '10px',
-                border: '1px solid var(--border-color)',
-                background: 'transparent',
-                color: 'var(--text-primary)',
-                cursor: 'pointer',
-                fontWeight: 700,
-              }}
-            >
-              Sign Out
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function App() {
-  const { isLoaded: authLoaded, isSignedIn } = useAuth();
+  // Sign-in is Convex Auth (convex/auth.ts). `convexAuthLoading` covers both
+  // reading the saved token and waiting for the server to accept it, so it
+  // stays true for as long as the phone is offline with a saved session.
   const { isAuthenticated: convexAuthenticated, isLoading: convexAuthLoading } = useConvexAuth();
-  const { signOut } = useClerk();
-  const { isLoaded: userLoaded, user } = useUser();
+  const { signOut } = useAuthActions();
+  const signedOut = !convexAuthLoading && !convexAuthenticated;
   const [isConvexAvailable, setIsConvexAvailable] = useState(() => readConvexAvailability());
   const [convexStatusChecked, setConvexStatusChecked] = useState(false);
   const currentProfile = useCurrentProfile(convexAuthenticated && isConvexAvailable);
@@ -199,7 +125,6 @@ export default function App() {
   const [welcomeName, setWelcomeName] = useState('');
   const [nameInput, setNameInput] = useState('');
   const [savingName, setSavingName] = useState(false);
-  const [convexConfigError, setConvexConfigError] = useState('');
   const [isMobile, setIsMobile] = useState(false);
   const [isForceUpdating, setIsForceUpdating] = useState(false);
   const [forceUpdateTargetVersion, setForceUpdateTargetVersion] = useState('');
@@ -207,7 +132,7 @@ export default function App() {
     typeof document === 'undefined' ? true : document.visibilityState === 'visible'
   ));
   const audioRef = useRef(null);
-  const syncedUserRef = useRef(null);
+  const syncedRef = useRef(false);
   const forceUpdateInFlightRef = useRef(null);
   const location = useLocation();
 
@@ -224,43 +149,6 @@ export default function App() {
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, []);
-
-  const [isOnline, setIsOnline] = useState(() => (
-    typeof navigator === 'undefined' ? true : navigator.onLine !== false
-  ));
-
-  useEffect(() => {
-    const goOnline = () => setIsOnline(true);
-    const goOffline = () => setIsOnline(false);
-    window.addEventListener('online', goOnline);
-    window.addEventListener('offline', goOffline);
-    return () => {
-      window.removeEventListener('online', goOnline);
-      window.removeEventListener('offline', goOffline);
-    };
-  }, []);
-
-  // Clerk loads its SDK from its own CDN, so offline it fails outright and
-  // `authLoaded` never flips - the app would sit on "Loading..." forever.
-  // After this grace period we stop waiting and, if a previous session left an
-  // identity behind, render from the cached snapshot instead.
-  const [authTimedOut, setAuthTimedOut] = useState(false);
-
-  useEffect(() => {
-    if (authLoaded && userLoaded) {
-      setAuthTimedOut(false);
-      return undefined;
-    }
-
-    const timeoutId = window.setTimeout(() => setAuthTimedOut(true), AUTH_LOAD_TIMEOUT_MS);
-    return () => window.clearTimeout(timeoutId);
-  }, [authLoaded, userLoaded]);
-
-  // Offline with a known user: skip the auth gate entirely rather than block on
-  // a handshake that cannot complete. Don't wait out the timeout when the
-  // browser already knows it is offline.
-  const offlineCachedMode =
-    !(authLoaded && userLoaded) && hasCachedIdentity() && (!isOnline || authTimedOut);
 
   useEffect(() => {
     console.log(`%cGradeX BITM ${APP_VERSION}`, 'color: #3b82f6; font-weight: bold; font-size: 16px; padding: 4px;');
@@ -409,60 +297,39 @@ export default function App() {
     }
   }, [forceUpdateVersion, tabVisible]);
 
+  // Signed out for certain (no saved session, or the server ended it): forget
+  // who was here so the next person starts clean.
   useEffect(() => {
-    if (!authLoaded || !userLoaded) return;
+    if (!signedOut) return;
+    syncedRef.current = false;
+    clearLocalAuthCache();
+  }, [signedOut]);
 
-    if (!isSignedIn || !user) {
-      syncedUserRef.current = null;
-      setConvexConfigError('');
-      clearLocalAuthCache();
-      return;
-    }
-
-    syncClerkUserToLocalStorage(user);
-  }, [authLoaded, userLoaded, isSignedIn, user]);
-
+  // Once per session, as soon as the server accepts it: make sure the account
+  // has its profile and timetable (and, the first time, bring an account from
+  // the old sign-in across - see users:syncCurrentUser).
+  const [syncedProfile, setSyncedProfile] = useState(null);
   useEffect(() => {
-    if (!convexAuthenticated || !user || syncedUserRef.current === user.id) return;
+    if (!convexAuthenticated || syncedRef.current) return;
+    syncedRef.current = true;
 
-    let cancelled = false;
-
-    const syncUser = async () => {
-      try {
-        await syncCurrentUser({
-          username: getClerkUsername(user),
-          name: getClerkDisplayName(user),
-          email: user.primaryEmailAddress?.emailAddress || undefined,
-          imageUrl: user.imageUrl || undefined,
-          firstName: user.firstName || undefined,
-          lastName: user.lastName || undefined,
-        });
-        if (!cancelled) {
-          syncedUserRef.current = user.id;
-          setConvexConfigError('');
-        }
-      } catch (err) {
-        console.error('Error syncing Clerk user to Convex:', err);
-        if (!cancelled) {
-          setConvexConfigError('Clerk signed in, but Convex user sync failed. Activate the Clerk Convex integration and the `convex` token template in Clerk Dashboard.');
-        }
-      }
-    };
-
-    syncUser();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [convexAuthenticated, syncCurrentUser, user]);
+    syncCurrentUser({})
+      .then((profile) => {
+        // Before the identity is cached, so the queue is already in the new
+        // account's name when its sender starts.
+        adoptPendingOps(profile.legacyId, profile.id);
+        cacheIdentity(profile);
+        setSyncedProfile(profile);
+      })
+      .catch((err) => {
+        console.error('Error preparing the account:', err);
+        syncedRef.current = false;
+      });
+  }, [convexAuthenticated, syncCurrentUser]);
 
   useEffect(() => {
     if (!convexAuthenticated || !currentProfile) return;
-
-    localStorage.setItem('gradex_user_id', currentProfile.id);
-    localStorage.setItem('gradex_username', currentProfile.username);
-    localStorage.setItem('gradex_user_name', currentProfile.name || currentProfile.username);
-    window.dispatchEvent(new Event('storage'));
+    cacheIdentity(currentProfile);
   }, [convexAuthenticated, currentProfile]);
 
   // Function to log social media clicks
@@ -474,50 +341,34 @@ export default function App() {
     }
   };
 
-  // AuthPage reports a finished sign-in before Clerk has handed over the user,
-  // so the greeting is decided here once the real profile is in hand. It used
-  // to be decided from a stand-in built out of the email address, which never
-  // has a name - every password login asked "What's your name?" again.
+  // AuthPage reports a finished sign-in; the greeting waits for the account
+  // itself, because only that says whether a name has been entered yet.
   const [justSignedIn, setJustSignedIn] = useState(false);
-  const handleAuthSuccess = () => setJustSignedIn(true);
+  const handleAuthSuccess = () => {
+    setSyncedProfile(null);
+    setJustSignedIn(true);
+  };
 
   useEffect(() => {
-    if (!justSignedIn || !isSignedIn || !user) return;
+    if (!justSignedIn || !syncedProfile) return;
     setJustSignedIn(false);
 
-    const name = getClerkDisplayName(user);
-    if (name && name.trim() && name !== getClerkUsername(user)) {
-      setWelcomeName(name);
+    if (syncedProfile.name && syncedProfile.name !== syncedProfile.username) {
+      setWelcomeName(syncedProfile.name);
       setShowWelcomeModal(true);
     } else {
       setShowNameModal(true);
     }
-  }, [justSignedIn, isSignedIn, user]);
+  }, [justSignedIn, syncedProfile]);
 
   const handleSaveName = async () => {
-    if (!nameInput.trim() || !user) return;
+    const trimmedName = nameInput.trim();
+    if (!trimmedName) return;
 
     setSavingName(true);
     try {
-      const trimmedName = nameInput.trim();
-      const { firstName, lastName } = splitDisplayName(trimmedName);
-      await user.update({
-        firstName,
-        lastName,
-        unsafeMetadata: {
-          ...(user.unsafeMetadata || {}),
-          displayName: trimmedName,
-        },
-      });
-      await updateCurrentProfile({
-        name: trimmedName,
-        username: getClerkUsername(user),
-        firstName,
-        lastName,
-        imageUrl: user.imageUrl || undefined,
-        email: user.primaryEmailAddress?.emailAddress || undefined,
-      });
-      setWelcomeName(nameInput.trim());
+      await updateCurrentProfile({ name: trimmedName });
+      setWelcomeName(trimmedName);
       setShowNameModal(false);
       setShowWelcomeModal(true);
     } catch (err) {
@@ -732,37 +583,18 @@ export default function App() {
         </div>
   );
 
-  // Everything below picks what renders under the splash overlay. It does not
-  // block on Convex reachability or the Clerk<->Convex JWT handshake - like the
-  // main GradeX app, the shell mounts as soon as Clerk knows who's signed in.
-  // Convex-backed data (currentProfile, queries in child routes, etc.) already
-  // resolves as `undefined` until it's ready via the `enabled` flags above, so
-  // those widgets show their own loading/offline state instead of the whole app
-  // refusing to open. OfflineIndicator (rendered below) surfaces connectivity.
+  // Everything below picks what renders under the splash overlay. The app
+  // never waits on Convex when it has something to show: with a cached
+  // identity it opens from the offline copy at once, online or not, and the
+  // live data replaces it when the server answers. OfflineIndicator (rendered
+  // below) surfaces connectivity.
   const mainScreen = (() => {
-    // offlineCachedMode means Clerk can't load (no network) but we know who the
-    // user was, so fall through and render everything from the cached snapshot.
-    if ((!authLoaded || !userLoaded) && !offlineCachedMode) {
-      return <AuthHandshakeSpinner label="Loading..." />;
-    }
-
-    if (location.pathname === '/auth/callback') {
-      return <AuthRedirectCallback />;
-    }
-
-    if (!isSignedIn && !offlineCachedMode) {
+    if (signedOut) {
       return <AuthPage onAuthSuccess={handleAuthSuccess} />;
     }
 
-    // Only hold the app for a genuine misconfiguration (Convex reachable but
-    // rejecting the Clerk session) - not for "still connecting" or "offline".
-    if (convexConfigError && isConvexAvailable) {
-      return (
-        <ConvexGate
-          message={convexConfigError}
-          onLogout={handleLogout}
-        />
-      );
+    if (!convexAuthenticated && !hasCachedIdentity()) {
+      return <AuthHandshakeSpinner label="Connecting..." />;
     }
 
     // Main app
@@ -926,7 +758,6 @@ export default function App() {
           zIndex: 1
         }}>
         <Routes>
-          <Route path="/auth/callback" element={<AuthRedirectCallback />} />
           <Route path="/" element={<Home />} />
           <Route path="/home" element={<Home />} />
           <Route path="/schedule" element={<Timetable />} />

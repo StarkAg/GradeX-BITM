@@ -21,7 +21,9 @@ export const getAdmin954Overview = query({
 
     const formattedUsers = users
       .map((user) => {
-        const attendance = attendanceByUser.get(user.clerkUserId) || {
+        // A row left from the Clerk sign-in still has its attendance stored
+        // under the old id until its owner signs back in.
+        const attendance = attendanceByUser.get(user.clerkUserId ?? user._id) || {
           totalAttended: 0,
           totalConducted: 0,
         };
@@ -30,10 +32,10 @@ export const getAdmin954Overview = query({
           : 0;
 
         return {
-          id: user.clerkUserId,
-          username: user.username,
+          id: user._id,
+          username: user.username || (user.email || "").split("@")[0] || "user",
           name: user.name || "-",
-          createdAt: user.createdAt,
+          createdAt: user.createdAt ?? user._creationTime,
           avgAttendance: Number(avgAttendance.toFixed(1)),
           totalAttended: attendance.totalAttended,
           totalConducted: attendance.totalConducted,

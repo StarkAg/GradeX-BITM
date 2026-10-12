@@ -1,8 +1,8 @@
 // Writes made while Convex cannot take them, and the offline copy they are
 // applied to in the meantime. No React in here, so it can be tested directly.
 //
-// A write made in the first second after launch (while the Clerk<->Convex
-// handshake runs) or while the phone is offline used to go to localStorage
+// A write made in the first second after launch (before the server has
+// accepted the session) or while the phone is offline used to go to localStorage
 // only, and the next server snapshot then wrote straight over it: the mark was
 // on screen and then silently gone. Such writes are now also queued and sent
 // once Convex is reachable.
@@ -10,7 +10,7 @@
 // Every queued write states a final value (this class is "present", this
 // subject's total is 12/15), never a change, so sending one twice is harmless.
 
-import { ACADEMIC_CACHE_KEYS, ACADEMIC_CACHE_OWNER_KEY } from './clerk';
+import { ACADEMIC_CACHE_KEYS, ACADEMIC_CACHE_OWNER_KEY } from './session';
 import { DEFAULT_SUBJECTS } from './subjects';
 
 export const PENDING_OPS_KEY = 'gradex_pending_ops';
@@ -222,6 +222,18 @@ export function queueLocalWrite(type, args, ownerId) {
   writePendingOps(ops);
   window.dispatchEvent(new Event('subjectsUpdated'));
   return true;
+}
+
+// Re-files writes queued under one account id as another's. Used once per
+// student, when an account from the Clerk sign-in is carried over to its new
+// id (users:syncCurrentUser returns the old id as `legacyId`): anything marked
+// offline just before the change would otherwise be thrown away as "someone
+// else's".
+export function adoptPendingOps(fromOwner, toOwner) {
+  if (!fromOwner || !toOwner || fromOwner === toOwner) return;
+  const ops = readPendingOps();
+  if (!ops.some((op) => op.owner === fromOwner)) return;
+  writePendingOps(ops.map((op) => (op.owner === fromOwner ? { ...op, owner: toOwner } : op)));
 }
 
 let flushing = false;

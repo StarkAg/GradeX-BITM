@@ -1,20 +1,11 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import { ClerkProvider, useAuth } from '@clerk/clerk-react';
-import { ConvexProviderWithClerk } from 'convex/react-clerk';
+import { ConvexAuthProvider } from '@convex-dev/auth/react';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
 import { convex } from './lib/convex';
 import './styles.css';
-
-const clerkPublishableKey =
-  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ||
-  import.meta.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-
-if (!clerkPublishableKey) {
-  throw new Error('Missing Clerk publishable key. Set VITE_CLERK_PUBLISHABLE_KEY in your env.');
-}
 
 // vite-plugin-pwa does not register a worker in development, but a worker
 // registered by an earlier production-like local build can still control this
@@ -31,14 +22,15 @@ if (import.meta.env.DEV && 'serviceWorker' in navigator) {
 const savedTheme = localStorage.getItem('gradex-theme') || 'dark';
 document.documentElement.setAttribute('data-theme', savedTheme);
 
+// Sign-in tokens are kept in localStorage by ConvexAuthProvider, so a session
+// survives closing the app, an offline start and an installed-app restart.
+// `shouldHandleCode` is off: nothing here signs in through a ?code= link.
 createRoot(document.getElementById('root')).render(
-  <ClerkProvider publishableKey={clerkPublishableKey} afterSignOutUrl="/">
-    <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
-      <BrowserRouter>
-        <ErrorBoundary name="app">
-          <App />
-        </ErrorBoundary>
-      </BrowserRouter>
-    </ConvexProviderWithClerk>
-  </ClerkProvider>
+  <ConvexAuthProvider client={convex} shouldHandleCode={false}>
+    <BrowserRouter>
+      <ErrorBoundary name="app">
+        <App />
+      </ErrorBoundary>
+    </BrowserRouter>
+  </ConvexAuthProvider>
 );

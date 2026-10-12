@@ -1,45 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { useClerk, useUser } from '@clerk/clerk-react';
+import { useAuthActions } from '@convex-dev/auth/react';
 import {
   useCurrentProfile,
   useDeleteCurrentUserData,
   useUpdateCurrentProfile,
 } from '../lib/academic-data';
 import ConfirmModal from './ConfirmModal';
-import {
-  clearLocalAuthCache,
-  getClerkUsername,
-  splitDisplayName,
-} from '../lib/clerk';
+import { clearLocalAuthCache } from '../lib/session';
 
 /**
  * UserPage - Profile page for logged-in users
  */
 
 export default function UserPage() {
-  const { signOut } = useClerk();
-  const { isLoaded, isSignedIn, user } = useUser();
-  const profile = useCurrentProfile(isSignedIn);
+  const { signOut } = useAuthActions();
+  const profile = useCurrentProfile();
   const updateCurrentProfile = useUpdateCurrentProfile();
   const deleteCurrentUserData = useDeleteCurrentUserData();
-  const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, inputValue: '' });
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [savingName, setSavingName] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-
-  useEffect(() => {
-    if (!isLoaded) return;
-
-    if (!isSignedIn || !user) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(false);
-  }, [isLoaded, isSignedIn, user]);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth <= 768);
@@ -79,34 +62,18 @@ export default function UserPage() {
     } catch (err) {
       console.error('Error signing out:', err);
     } finally {
-      clearLocalAuthCache(true);
+      clearLocalAuthCache();
       window.location.reload();
     }
   };
 
   const handleSaveName = async () => {
-    if (!nameInput.trim() || !user || savingName) return;
+    const trimmedName = nameInput.trim();
+    if (!trimmedName || savingName) return;
 
     setSavingName(true);
     try {
-      const trimmedName = nameInput.trim();
-      const { firstName, lastName } = splitDisplayName(trimmedName);
-      const updatedUser = await user.update({
-        firstName,
-        lastName,
-        unsafeMetadata: {
-          ...(user.unsafeMetadata || {}),
-          displayName: trimmedName,
-        },
-      });
-      await updateCurrentProfile({
-        name: trimmedName,
-        username: getClerkUsername(updatedUser),
-        firstName,
-        lastName,
-        imageUrl: updatedUser.imageUrl || undefined,
-        email: updatedUser.primaryEmailAddress?.emailAddress || undefined,
-      });
+      await updateCurrentProfile({ name: trimmedName });
       setEditingName(false);
     } catch (err) {
       console.error('Error saving name:', err);
@@ -120,17 +87,16 @@ export default function UserPage() {
   };
 
   const confirmDeleteAccount = async () => {
-    const userId = user?.id;
-    if (!userId) return;
+    if (!profile?.id) return;
 
     setDeleting(true);
     setDeleteConfirm({ open: false, inputValue: '' });
     try {
+      // The server removes the account, its password and every session; the
+      // sign-out after it only clears this device.
       await deleteCurrentUserData({});
-      if (user) {
-        await user.delete();
-      }
-      clearLocalAuthCache(true);
+      await signOut();
+      clearLocalAuthCache();
       window.location.reload();
     } catch (err) {
       console.error('Error deleting account:', err);
@@ -138,7 +104,7 @@ export default function UserPage() {
     }
   };
 
-  if (loading) {
+  if (profile === undefined) {
     return (
       <div style={{
         display: 'flex',

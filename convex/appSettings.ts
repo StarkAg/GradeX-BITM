@@ -10,7 +10,7 @@ const FORCE_UPDATE_KEY = "force_update_version";
  * forced update is set, which is the normal state.
  *
  * Deliberately unauthenticated: the app checks this before/independently of
- * the Clerk<->Convex handshake, so gating it behind auth would mean a client
+ * sign-in, so gating it behind auth would mean a client
  * stuck on a broken build could never be told to update.
  */
 export const getForceUpdateVersion = query({

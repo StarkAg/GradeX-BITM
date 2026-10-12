@@ -1,5 +1,5 @@
 // Ported from GradeX's src/lib/appUpdate.js. Same cleanup/refresh contract,
-// with BITM's own storage keys - see clearLocalAuthCache in ./clerk.js for the
+// with BITM's own storage keys - see clearLocalAuthCache in ./session.js for the
 // keys this app actually writes.
 
 export const PRESERVED_UI_STORAGE_KEYS = [

@@ -1,9 +1,8 @@
+// Tokens are issued by this deployment itself (convex/auth.ts).
 export default {
   providers: [
     {
-      domain:
-        process.env.CLERK_FRONTEND_API_URL ||
-        process.env.CLERK_JWT_ISSUER_DOMAIN,
+      domain: process.env.CONVEX_SITE_URL,
       applicationID: "convex",
     },
   ],

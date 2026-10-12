@@ -7,13 +7,18 @@ import { resolveBaseSubjectCode } from '../convex/defaults';
 
 const modules = import.meta.glob('../convex/**/*.*s');
 
-const PROFILE = { username: 'asha', name: 'Asha' };
+// A signed-in student: a row in `users` plus a token whose subject is
+// "<user id>|<session id>", which is what Convex Auth issues.
+async function addUser(t: ReturnType<typeof convexTest>, email: string) {
+  const userId = await t.run((ctx) => ctx.db.insert('users', { email }));
+  return { userId, user: t.withIdentity({ subject: `${userId}|test-session` }) };
+}
 
-async function signedIn(subject = 'user_a') {
+async function signedIn(email = 'asha@example.com') {
   const t = convexTest(schema, modules);
-  const user = t.withIdentity({ subject });
-  await user.mutation(api.users.syncCurrentUser, PROFILE);
-  return { t, user };
+  const { user, userId } = await addUser(t, email);
+  await user.mutation(api.users.syncCurrentUser, {});
+  return { t, user, userId };
 }
 
 const total = async (user: any, code: string) =>
@@ -149,14 +154,15 @@ describe('saveAcademicState', () => {
 
 describe('access', () => {
   it('keeps one student\'s data away from another', async () => {
-    const { t, user } = await signedIn('user_a');
+    const { t, user } = await signedIn('asha@example.com');
     await user.mutation(api.academics.setDailyAttendanceStatus, { date: '2026-08-03', subjectCode: 'RM', status: 'present' });
 
-    const other = t.withIdentity({ subject: 'user_b' });
-    await other.mutation(api.users.syncCurrentUser, { username: 'ben', name: 'Ben' });
+    const { user: other } = await addUser(t, 'ben@example.com');
+    await other.mutation(api.users.syncCurrentUser, {});
     const snapshot = await other.query(api.academics.getCurrentSnapshot, {});
     expect(snapshot.dailyAttendance).toEqual({});
     expect(snapshot.attendanceTotals).toEqual({});
+    expect(snapshot.profile).toMatchObject({ username: 'ben', email: 'ben@example.com' });
   });
 
   it('refuses the admin overview to an ordinary signed-in student', async () => {
@@ -164,15 +170,15 @@ describe('access', () => {
     await expect(user.query(api.admin.getAdmin954Overview, {})).rejects.toThrow('Not authorized');
   });
 
-  it('allows the admin overview to an account named in ADMIN_CLERK_USER_IDS', async () => {
-    process.env.ADMIN_CLERK_USER_IDS = 'user_admin';
+  it('allows the admin overview to an account named in ADMIN_USER_IDS', async () => {
+    const { t } = await signedIn('asha@example.com');
+    const { user: admin, userId: adminId } = await addUser(t, 'admin@example.com');
+    process.env.ADMIN_USER_IDS = `someone-else, ${adminId}`;
     try {
-      const { t } = await signedIn('user_a');
-      const admin = t.withIdentity({ subject: 'user_admin' });
       const overview = await admin.query(api.admin.getAdmin954Overview, {});
-      expect(overview.users.map((u: any) => u.username)).toEqual(['asha']);
+      expect(overview.users.map((u: any) => u.username).sort()).toEqual(['admin', 'asha']);
     } finally {
-      delete process.env.ADMIN_CLERK_USER_IDS;
+      delete process.env.ADMIN_USER_IDS;
     }
   });
 
@@ -188,6 +194,15 @@ describe('access', () => {
     ).rejects.toThrow('Not authenticated');
   });
 
+  it('refuses a token that outlived its account', async () => {
+    const { user } = await signedIn();
+    await user.mutation(api.users.deleteCurrentUserData, {});
+    await expect(
+      user.mutation(api.academics.setDailyAttendanceStatus, { date: '2026-08-03', subjectCode: 'RM', status: 'present' })
+    ).rejects.toThrow('Not authenticated');
+    await expect(user.mutation(api.users.syncCurrentUser, {})).rejects.toThrow('Not authenticated');
+  });
+
   it('sets the force-update version from the CLI-only mutation', async () => {
     const t = convexTest(schema, modules);
     expect(await t.query(api.appSettings.getForceUpdateVersion, {})).toBeNull();
@@ -198,19 +213,93 @@ describe('access', () => {
   });
 });
 
+describe('profile', () => {
+  it('starts with the email name and takes a real name', async () => {
+    const { user } = await signedIn('asha.k@example.com');
+    expect(await user.query(api.users.getCurrentProfile, {})).toMatchObject({ username: 'asha.k', name: 'asha.k' });
+    await user.mutation(api.users.updateCurrentProfile, { name: '  Asha Kumari ' });
+    expect(await user.query(api.users.getCurrentProfile, {})).toMatchObject({ username: 'asha.k', name: 'Asha Kumari' });
+  });
+});
+
+describe('accounts from the Clerk sign-in', () => {
+  // What production held on the day sign-in moved: a `users` row keyed by a
+  // Clerk id, and that student's rows stored under the same id.
+  async function seedLegacy(t: ReturnType<typeof convexTest>, email: string, clerkUserId: string) {
+    await t.run(async (ctx) => {
+      await ctx.db.insert('users', { clerkUserId, email, username: 'asha', name: 'Asha Kumari', createdAt: 111, updatedAt: 111 });
+      const stamp = { userId: clerkUserId, createdAt: 111, updatedAt: 111 };
+      await ctx.db.insert('subjects', { ...stamp, code: 'OB', name: 'Organizational Behavior', room: 'LH-11', isLab: false });
+      await ctx.db.insert('timetableEntries', { ...stamp, day: 'Monday', slotIndex: 0, subjectCode: 'OB', room: 'LH-11', isLab: false });
+      await ctx.db.insert('attendanceDaily', { ...stamp, date: '2026-08-03', subjectCode: 'OB', status: 'present' });
+      await ctx.db.insert('attendanceTotals', { userId: clerkUserId, subjectCode: 'OB', classesAttended: 21, classesConducted: 26, updatedAt: 111 });
+      await ctx.db.insert('holidays', { ...stamp, date: '2026-08-15', label: 'Holiday' });
+    });
+  }
+
+  it('hands everything to the account created with the same email', async () => {
+    const t = convexTest(schema, modules);
+    await seedLegacy(t, 'asha@example.com', 'user_clerk_1');
+
+    const { user, userId } = await addUser(t, 'asha@example.com');
+    const synced = await user.mutation(api.users.syncCurrentUser, {});
+    expect(synced).toMatchObject({ id: userId, name: 'Asha Kumari', username: 'asha', legacyId: 'user_clerk_1' });
+
+    const snapshot = await user.query(api.academics.getCurrentSnapshot, {});
+    expect(snapshot.subjects.map((s: any) => s.code)).toEqual(['OB']);
+    expect(snapshot.timetable.Monday[0]).toMatchObject({ code: 'OB' });
+    expect(snapshot.dailyAttendance).toEqual({ '2026-08-03': { OB: 'present' } });
+    expect(snapshot.attendanceTotals).toEqual({ OB: { attended: 21, conducted: 26 } });
+    expect(snapshot.holidays).toEqual({ '2026-08-15': 'Holiday' });
+
+    const left = await t.run(async (ctx) => ({
+      users: (await ctx.db.query('users').collect()).length,
+      underOldId: (await ctx.db.query('subjects').withIndex('by_user_id', (q) => q.eq('userId', 'user_clerk_1')).collect()).length,
+    }));
+    expect(left).toEqual({ users: 1, underOldId: 0 });
+
+    // The next launch does nothing further.
+    expect((await user.mutation(api.users.syncCurrentUser, {})).legacyId).toBeNull();
+    await user.mutation(api.academics.setDailyAttendanceStatus, { date: '2026-08-04', subjectCode: 'OB', status: 'absent' });
+    expect(await total(user, 'OB')).toEqual({ attended: 21, conducted: 27 });
+  });
+
+  it('leaves it alone for an account with a different email', async () => {
+    const t = convexTest(schema, modules);
+    await seedLegacy(t, 'asha@example.com', 'user_clerk_1');
+
+    const { user } = await addUser(t, 'someone.else@example.com');
+    expect((await user.mutation(api.users.syncCurrentUser, {})).legacyId).toBeNull();
+    const snapshot = await user.query(api.academics.getCurrentSnapshot, {});
+    expect(snapshot.attendanceTotals).toEqual({});
+    expect(snapshot.subjects.length).toBeGreaterThan(1);
+
+    const legacyRows = await t.run((ctx) => ctx.db.query('attendanceDaily').withIndex('by_user_id', (q) => q.eq('userId', 'user_clerk_1')).collect());
+    expect(legacyRows).toHaveLength(1);
+  });
+});
+
 describe('account deletion', () => {
-  it('removes every row the student owns, holidays included', async () => {
-    const { t, user } = await signedIn();
+  it('removes every row the student owns, sign-in included', async () => {
+    const { t, user, userId } = await signedIn();
     await user.mutation(api.academics.setDailyAttendanceStatus, { date: '2026-08-03', subjectCode: 'RM', status: 'present' });
     await user.mutation(api.academics.setHoliday, { date: '2026-08-15', isHoliday: true });
+    await t.run(async (ctx) => {
+      const sessionId = await ctx.db.insert('authSessions', { userId, expirationTime: Date.now() + 1000 });
+      await ctx.db.insert('authRefreshTokens', { sessionId, expirationTime: Date.now() + 1000 });
+      await ctx.db.insert('authAccounts', { userId, provider: 'password', providerAccountId: 'asha@example.com', secret: 'hash' });
+    });
     await user.mutation(api.users.deleteCurrentUserData, {});
 
     const left = await t.run(async (ctx) => {
-      const tables = ['users', 'subjects', 'timetableEntries', 'attendanceDaily', 'attendanceTotals', 'holidays'] as const;
+      const tables = [
+        'users', 'subjects', 'timetableEntries', 'attendanceDaily', 'attendanceTotals', 'holidays',
+        'authSessions', 'authRefreshTokens', 'authAccounts',
+      ] as const;
       const counts: Record<string, number> = {};
       for (const table of tables) counts[table] = (await ctx.db.query(table).collect()).length;
       return counts;
     });
-    expect(left).toEqual({ users: 0, subjects: 0, timetableEntries: 0, attendanceDaily: 0, attendanceTotals: 0, holidays: 0 });
+    expect(Object.values(left).every((count) => count === 0)).toBe(true);
   });
 });

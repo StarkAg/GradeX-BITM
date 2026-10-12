@@ -7,7 +7,8 @@ import {
   TIMETABLE_DAYS,
   resolveBaseSubjectCode,
 } from "./defaults";
-import { requireIdentity, nowTs } from "./lib/auth";
+import { requireUserId, nowTs } from "./lib/auth";
+import { toProfile } from "./users";
 
 function buildEmptyTimetable() {
   const timetable: Record<string, Array<{ code: string; room?: string; isLab?: boolean } | null>> = {};
@@ -136,14 +137,10 @@ async function adjustAttendanceTotal(
 export const getCurrentSnapshot = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await requireIdentity(ctx);
-    const userId = identity.subject;
+    const userId = await requireUserId(ctx);
 
     const [profile, subjectDocs, timetableDocs, dailyDocs, totalDocs, holidayDocs] = await Promise.all([
-      ctx.db
-        .query("users")
-        .withIndex("by_clerk_user_id", (q) => q.eq("clerkUserId", userId))
-        .first(),
+      ctx.db.get(userId),
       ctx.db.query("subjects").withIndex("by_user_id", (q) => q.eq("userId", userId)).collect(),
       ctx.db
         .query("timetableEntries")
@@ -202,15 +199,7 @@ export const getCurrentSnapshot = query({
     }
 
     return {
-      profile: profile
-        ? {
-            id: profile.clerkUserId,
-            username: profile.username,
-            name: profile.name,
-            email: profile.email || "",
-            imageUrl: profile.imageUrl || "",
-          }
-        : null,
+      profile: profile ? toProfile(profile) : null,
       subjects,
       timetable,
       attendanceTotals: buildAttendanceTotalsMap(totalDocs),
@@ -233,8 +222,7 @@ export const saveAcademicState = mutation({
     timetable: v.any(),
   },
   handler: async (ctx, args) => {
-    const identity = await requireIdentity(ctx);
-    const userId = identity.subject;
+    const userId = await requireUserId(ctx);
     const timestamp = nowTs();
 
     if (args.subjects.length > MAX_SUBJECTS) {
@@ -339,12 +327,12 @@ export const setManualAttendanceTotal = mutation({
     conducted: v.number(),
   },
   handler: async (ctx, args) => {
-    const identity = await requireIdentity(ctx);
-    const knownCodes = await getKnownSubjectCodes(ctx, identity.subject);
+    const userId = await requireUserId(ctx);
+    const knownCodes = await getKnownSubjectCodes(ctx, userId);
     const conducted = toCount(args.conducted);
     await upsertAttendanceTotal(
       ctx,
-      identity.subject,
+      userId,
       resolveBaseSubjectCode(args.subjectCode.trim(), knownCodes),
       Math.min(conducted, toCount(args.attended)),
       conducted
@@ -359,8 +347,7 @@ export const setDailyAttendanceStatus = mutation({
     status: v.union(v.literal("present"), v.literal("absent"), v.null()),
   },
   handler: async (ctx, args) => {
-    const identity = await requireIdentity(ctx);
-    const userId = identity.subject;
+    const userId = await requireUserId(ctx);
     assertDateKey(args.date);
     const subjectCode = args.subjectCode.trim();
     if (!subjectCode || subjectCode.length > 48) {
@@ -417,8 +404,7 @@ export const setHoliday = mutation({
     label: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await requireIdentity(ctx);
-    const userId = identity.subject;
+    const userId = await requireUserId(ctx);
     assertDateKey(args.date);
     const label = args.label?.trim().slice(0, 60);
     const existing = await ctx.db

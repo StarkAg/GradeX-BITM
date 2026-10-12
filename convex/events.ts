@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { nowTs, requireAdmin } from "./lib/auth";
 
 export const logSocialClick = mutation({
@@ -7,9 +8,9 @@ export const logSocialClick = mutation({
     platform: v.string(),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const userId = await getAuthUserId(ctx);
     await ctx.db.insert("socialClicks", {
-      userId: identity?.subject,
+      userId: userId ?? undefined,
       platform: args.platform.trim().slice(0, 32),
       createdAt: nowTs(),
     });
@@ -22,11 +23,11 @@ export const submitFeedback = mutation({
     registerNumber: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
+    const userId = await getAuthUserId(ctx);
     const feedback = args.feedback.trim().slice(0, 2000);
     if (!feedback) return;
     await ctx.db.insert("feedback", {
-      userId: identity?.subject,
+      userId: userId ?? undefined,
       registerNumber: args.registerNumber?.trim().slice(0, 32),
       feedback,
       createdAt: nowTs(),

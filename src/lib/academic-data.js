@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useUser } from '@clerk/clerk-react';
 import { useConvex, useConvexAuth, useMutation, useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
-import { ACADEMIC_CACHE_OWNER_KEY, buildBridgeUser, hasCachedIdentity } from './clerk';
+import { ACADEMIC_CACHE_OWNER_KEY, readCachedIdentity } from './session';
 import { DEFAULT_SUBJECTS, DEFAULT_TIMETABLE } from './subjects';
 import {
   PENDING_OPS_EVENT,
@@ -17,17 +16,10 @@ import {
   writeJson,
 } from './pending-writes';
 
-// buildLocalSnapshot/buildLocalProfile read localStorage and allocate a new
-// object every call. Bumping this on 'subjectsUpdated' keeps the memoized
-// snapshot referentially stable across re-renders (so effects keyed on it
-// don't loop) while still picking up local edits made while offline.
-//
-// Deliberately NOT listening for the generic 'storage' event here: it's
-// dispatched from effects elsewhere (e.g. syncClerkUserToLocalStorage) that
-// aren't guaranteed to fire only once, and turning that into a state update
-// here previously created a render loop (Clerk's `user` reference isn't
-// guaranteed stable across renders, so a `storage`-driven bump could refire
-// every render).
+// buildLocalSnapshot reads localStorage and allocates a new object every call.
+// Bumping this on 'subjectsUpdated' keeps the memoized snapshot referentially
+// stable across re-renders (so effects keyed on it don't loop) while still
+// picking up local edits made while offline.
 function useLocalDataVersion() {
   const [version, setVersion] = useState(0);
   useEffect(() => {
@@ -36,6 +28,20 @@ function useLocalDataVersion() {
     return () => window.removeEventListener('subjectsUpdated', bump);
   }, []);
   return version;
+}
+
+// The id of the student this device is signed in as ('' when signed out). It
+// is the key their rows are stored under on the server and the owner stamp on
+// the offline copy and on queued writes. session.js announces every change to
+// it with a 'storage' event, and only when it really changed.
+function useSessionUserId() {
+  const [userId, setUserId] = useState(() => readString('gradex_user_id'));
+  useEffect(() => {
+    const refresh = () => setUserId(readString('gradex_user_id'));
+    window.addEventListener('storage', refresh);
+    return () => window.removeEventListener('storage', refresh);
+  }, []);
+  return userId;
 }
 
 const PENDING_MUTATIONS = {
@@ -61,9 +67,8 @@ function usePendingOpsVersion() {
 // whenever Convex has accepted the session and the browser is online.
 export function usePendingOpsSync() {
   const { isAuthenticated } = useConvexAuth();
-  const { user } = useUser();
   const convex = useConvex();
-  const userId = user?.id;
+  const userId = useSessionUserId();
 
   useEffect(() => {
     if (!isAuthenticated || !userId) return undefined;
@@ -97,20 +102,6 @@ export function usePendingOpsSync() {
   }, [isAuthenticated, userId, convex]);
 }
 
-function buildLocalProfile(user) {
-  const bridgeUser = buildBridgeUser(user);
-  if (bridgeUser) return bridgeUser;
-
-  const id = localStorage.getItem('gradex_user_id');
-  const username = localStorage.getItem('gradex_username');
-  const name = localStorage.getItem('gradex_user_name');
-  return id ? { id, username: username || 'user', name: name || username || 'User' } : null;
-}
-
-function currentOwnerId(user) {
-  return user?.id || readString('gradex_user_id');
-}
-
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 // localStorage is outside the app's control (old versions, a half-written
@@ -139,10 +130,10 @@ function readCachedMap(key) {
   return isPlainObject(value) ? value : {};
 }
 
-function buildLocalSnapshot(user) {
-  const owned = isCacheOwnedBy(currentOwnerId(user));
+function buildLocalSnapshot(ownerId) {
+  const owned = isCacheOwnedBy(ownerId);
   return {
-    profile: buildLocalProfile(user),
+    profile: readCachedIdentity(),
     subjects: owned ? readCachedSubjects() : DEFAULT_SUBJECTS,
     timetable: owned ? readCachedTimetable() : DEFAULT_TIMETABLE,
     attendanceTotals: normalizeAttendanceTotals(owned ? readCachedMap('gradex_manual_attendance') : {}),
@@ -151,26 +142,13 @@ function buildLocalSnapshot(user) {
   };
 }
 
-function writeLocalProfile(profile) {
-  if (!profile) return;
-  localStorage.setItem('gradex_user_id', profile.id);
-  localStorage.setItem('gradex_username', profile.username);
-  localStorage.setItem('gradex_user_name', profile.name || profile.username);
-  window.dispatchEvent(new Event('storage'));
-}
-
 export function useAcademicSnapshot(enabled = true) {
   const { isAuthenticated } = useConvexAuth();
-  const { user, isSignedIn } = useUser();
   const query = useQuery(api.academics.getCurrentSnapshot, enabled && isAuthenticated ? {} : 'skip');
   const localVersion = useLocalDataVersion();
   const pendingVersion = usePendingOpsVersion();
-  const ownerId = currentOwnerId(user);
-  // Keyed on user?.id (a primitive), not the `user` object itself - Clerk
-  // doesn't guarantee that reference is stable across renders, and keying on
-  // it directly re-triggered this memo (and everything downstream of it)
-  // every render.
-  const localSnapshot = useMemo(() => buildLocalSnapshot(user), [user?.id, localVersion, pendingVersion]);
+  const ownerId = useSessionUserId();
+  const localSnapshot = useMemo(() => buildLocalSnapshot(ownerId), [ownerId, localVersion, pendingVersion]);
   const hasPending = useMemo(() => hasPendingOpsFor(ownerId), [ownerId, pendingVersion, localVersion]);
 
   // Mirror each successful snapshot into localStorage so the offline fallback
@@ -181,19 +159,21 @@ export function useAcademicSnapshot(enabled = true) {
   //
   // Held back while writes are still queued: the server has not seen them yet,
   // so its snapshot would overwrite the only copy of what the user just did.
+  // Filed under the id the snapshot itself reports, never a remembered one.
+  const snapshotOwnerId = query?.profile?.id || '';
   useEffect(() => {
-    if (!query || !ownerId || hasPending) return;
+    if (!query || !snapshotOwnerId || hasPendingOpsFor(snapshotOwnerId)) return;
     try {
       writeJson('gradex_subjects', query.subjects || []);
       writeJson('gradex_timetable', query.timetable || {});
       writeJson('gradex_daily_attendance', query.dailyAttendance || {});
       writeJson('gradex_manual_attendance', query.attendanceTotals || {});
       writeJson('gradex_holidays', query.holidays || {});
-      localStorage.setItem(ACADEMIC_CACHE_OWNER_KEY, ownerId);
+      localStorage.setItem(ACADEMIC_CACHE_OWNER_KEY, snapshotOwnerId);
     } catch (err) {
       console.warn('[AcademicData] Failed to cache snapshot for offline use:', err);
     }
-  }, [query, ownerId, hasPending]);
+  }, [query, snapshotOwnerId, hasPending]);
 
   if (!enabled) return undefined;
   // Convex query resolved (online, handshake done) and nothing is waiting to
@@ -202,21 +182,19 @@ export function useAcademicSnapshot(enabled = true) {
   // Signed in but Convex hasn't caught up yet (offline, still connecting, or
   // queued writes not yet sent): serve the local copy, which already includes
   // those writes, instead of spinning or showing the state before them.
-  if (isSignedIn || hasCachedIdentity()) return localSnapshot;
+  if (ownerId) return localSnapshot;
   return query === undefined ? null : query;
 }
 
 export function useCurrentProfile(enabled = true) {
   const { isAuthenticated } = useConvexAuth();
-  const { user, isSignedIn } = useUser();
   const query = useQuery(api.users.getCurrentProfile, enabled && isAuthenticated ? {} : 'skip');
-  const localVersion = useLocalDataVersion();
-  const localProfile = useMemo(() => buildLocalProfile(user), [user?.id, localVersion]);
+  const ownerId = useSessionUserId();
+  const localProfile = useMemo(() => readCachedIdentity(), [ownerId]);
 
   if (!enabled) return undefined;
   if (query !== undefined) return query;
-  if (isSignedIn || hasCachedIdentity()) return localProfile;
-  return null;
+  return ownerId ? localProfile : null;
 }
 
 export function useSyncCurrentUser() {
@@ -227,17 +205,12 @@ export function useUpdateCurrentProfile() {
   const { isAuthenticated } = useConvexAuth();
   const mutation = useMutation(api.users.updateCurrentProfile);
 
-  return async (args) => {
+  return async ({ name }) => {
     if (!isAuthenticated) {
-      writeLocalProfile({
-        id: localStorage.getItem('gradex_user_id') || 'local-user',
-        username: args.username || localStorage.getItem('gradex_username') || 'user',
-        name: args.name,
-      });
-      return null;
+      throw new Error('You are offline. Connect to the internet to change your name.');
     }
 
-    return mutation(args);
+    return mutation({ name });
   };
 }
 
@@ -260,12 +233,11 @@ export function useDeleteCurrentUserData() {
 // Convex mutation; otherwise it is applied to the offline copy and queued.
 function useQueuedMutation(type) {
   const { isAuthenticated } = useConvexAuth();
-  const { user } = useUser();
   const mutation = useMutation(PENDING_MUTATIONS[type]);
 
   return async (args) => {
     if (isAuthenticated && isBrowserOnline()) return mutation(args);
-    queueLocalWrite(type, args, currentOwnerId(user));
+    queueLocalWrite(type, args);
     return null;
   };
 }

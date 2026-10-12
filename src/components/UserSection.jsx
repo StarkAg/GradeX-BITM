@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { useUser } from '@clerk/clerk-react';
+import { useAuthActions } from '@convex-dev/auth/react';
 import {
   useCurrentProfile,
   useDeleteCurrentUserData,
   useUpdateCurrentProfile,
 } from '../lib/academic-data';
 import ConfirmModal from './ConfirmModal';
-import { getClerkUsername, splitDisplayName } from '../lib/clerk';
+import { clearLocalAuthCache } from '../lib/session';
 
 export default function UserSection({ isCollapsed, onLogout }) {
-  const { user } = useUser();
+  const { signOut } = useAuthActions();
   const userData = useCurrentProfile();
   const updateCurrentProfile = useUpdateCurrentProfile();
   const deleteCurrentUserData = useDeleteCurrentUserData();
@@ -35,28 +35,12 @@ export default function UserSection({ isCollapsed, onLogout }) {
   }, [showModal]);
 
   const handleSaveName = async () => {
-    if (!nameInput.trim() || !user || savingName) return;
-    
+    const trimmedName = nameInput.trim();
+    if (!trimmedName || savingName) return;
+
     setSavingName(true);
     try {
-      const trimmedName = nameInput.trim();
-      const { firstName, lastName } = splitDisplayName(trimmedName);
-      const updatedUser = await user.update({
-        firstName,
-        lastName,
-        unsafeMetadata: {
-          ...(user.unsafeMetadata || {}),
-          displayName: trimmedName,
-        },
-      });
-      await updateCurrentProfile({
-        name: trimmedName,
-        username: getClerkUsername(updatedUser),
-        firstName,
-        lastName,
-        imageUrl: updatedUser.imageUrl || undefined,
-        email: updatedUser.primaryEmailAddress?.emailAddress || undefined,
-      });
+      await updateCurrentProfile({ name: trimmedName });
       setEditingName(false);
     } catch (err) {
       console.error('Error saving name:', err);
@@ -70,14 +54,15 @@ export default function UserSection({ isCollapsed, onLogout }) {
   };
 
   const confirmDeleteAccount = async () => {
-    if (!user) return;
+    if (!userData?.id) return;
 
     setDeleting(true);
     setDeleteConfirm({ open: false, inputValue: '' });
     setShowModal(false);
     try {
       await deleteCurrentUserData({});
-      await user.delete();
+      await signOut();
+      clearLocalAuthCache();
       window.location.reload();
     } catch (err) {
       console.error('Error deleting account:', err);
