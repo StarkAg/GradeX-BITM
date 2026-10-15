@@ -35,17 +35,27 @@ export default function AuthPage({ onAuthSuccess }) {
   }, []);
 
   const togglePlay = () => {
-    if (!audioRef.current) return;
-    try {
-      if (isPlaying) {
-        audioRef.current.pause();
-      } else {
-        audioRef.current.play();
-      }
-      setIsPlaying(!isPlaying);
-    } catch (err) {
-      console.warn('Audio playback failed:', err);
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+      return;
     }
+    // play() is asynchronous and can be refused (no gesture yet, the file not
+    // reachable offline): only a song that actually started counts as playing.
+    let started;
+    try {
+      started = Promise.resolve(audio.play());
+    } catch (err) {
+      started = Promise.reject(err);
+    }
+    started
+      .then(() => setIsPlaying(true))
+      .catch((err) => {
+        console.warn('Audio playback failed:', err);
+        setIsPlaying(false);
+      });
   };
 
   const isValidEmail = (value) => /\S+@\S+\.\S+/.test((value || '').trim());

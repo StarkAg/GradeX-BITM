@@ -6,7 +6,7 @@ import {
   useUpdateCurrentProfile,
 } from '../lib/academic-data';
 import ConfirmModal from './ConfirmModal';
-import { clearLocalAuthCache } from '../lib/session';
+import { clearLocalAuthCache, getAuthErrorMessage } from '../lib/session';
 
 /**
  * UserPage - Profile page for logged-in users
@@ -22,6 +22,8 @@ export default function UserPage() {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [savingName, setSavingName] = useState(false);
+  // What went wrong with the last name change or deletion, shown under the account box.
+  const [actionError, setActionError] = useState('');
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
 
   useEffect(() => {
@@ -72,11 +74,13 @@ export default function UserPage() {
     if (!trimmedName || savingName) return;
 
     setSavingName(true);
+    setActionError('');
     try {
       await updateCurrentProfile({ name: trimmedName });
       setEditingName(false);
     } catch (err) {
       console.error('Error saving name:', err);
+      setActionError(getAuthErrorMessage(err, 'Could not save your name. Try again.'));
     } finally {
       setSavingName(false);
     }
@@ -90,6 +94,7 @@ export default function UserPage() {
     if (!profile?.id) return;
 
     setDeleting(true);
+    setActionError('');
     setDeleteConfirm({ open: false, inputValue: '' });
     try {
       // The server removes the account, its password and every session; the
@@ -100,6 +105,7 @@ export default function UserPage() {
       window.location.reload();
     } catch (err) {
       console.error('Error deleting account:', err);
+      setActionError(getAuthErrorMessage(err, 'Could not delete the account. Try again.'));
       setDeleting(false);
     }
   };
@@ -342,6 +348,12 @@ export default function UserPage() {
               Self-Managed • Cloud Sync Enabled
                 </div>
               </div>
+
+            {actionError && (
+              <p role="alert" style={{ width: '100%', margin: 0, fontSize: isMobile ? '12px' : '13px', color: '#f87171', textAlign: 'center' }}>
+                {actionError}
+              </p>
+            )}
 
             {/* Logout Button */}
             <button

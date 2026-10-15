@@ -6,7 +6,7 @@ import {
   useUpdateCurrentProfile,
 } from '../lib/academic-data';
 import ConfirmModal from './ConfirmModal';
-import { clearLocalAuthCache } from '../lib/session';
+import { clearLocalAuthCache, getAuthErrorMessage } from '../lib/session';
 
 export default function UserSection({ isCollapsed, onLogout }) {
   const { signOut } = useAuthActions();
@@ -19,6 +19,8 @@ export default function UserSection({ isCollapsed, onLogout }) {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [savingName, setSavingName] = useState(false);
+  // What went wrong with the last name change or deletion, shown above Sign Out.
+  const [actionError, setActionError] = useState('');
 
   useEffect(() => {
     if (showModal) {
@@ -39,11 +41,13 @@ export default function UserSection({ isCollapsed, onLogout }) {
     if (!trimmedName || savingName) return;
 
     setSavingName(true);
+    setActionError('');
     try {
       await updateCurrentProfile({ name: trimmedName });
       setEditingName(false);
     } catch (err) {
       console.error('Error saving name:', err);
+      setActionError(getAuthErrorMessage(err, 'Could not save your name. Try again.'));
     } finally {
       setSavingName(false);
     }
@@ -57,8 +61,8 @@ export default function UserSection({ isCollapsed, onLogout }) {
     if (!userData?.id) return;
 
     setDeleting(true);
+    setActionError('');
     setDeleteConfirm({ open: false, inputValue: '' });
-    setShowModal(false);
     try {
       await deleteCurrentUserData({});
       await signOut();
@@ -66,6 +70,7 @@ export default function UserSection({ isCollapsed, onLogout }) {
       window.location.reload();
     } catch (err) {
       console.error('Error deleting account:', err);
+      setActionError(getAuthErrorMessage(err, 'Could not delete the account. Try again.'));
       setDeleting(false);
     }
   };
@@ -386,6 +391,12 @@ export default function UserSection({ isCollapsed, onLogout }) {
                   @{userData.username}
                   </span>
                 </div>
+
+              {actionError && (
+                <p role="alert" style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#f87171', textAlign: 'center' }}>
+                  {actionError}
+                </p>
+              )}
 
               {/* Sign Out */}
               <button

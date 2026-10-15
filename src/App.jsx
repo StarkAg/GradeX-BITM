@@ -123,6 +123,7 @@ export default function App() {
   const [welcomeName, setWelcomeName] = useState('');
   const [nameInput, setNameInput] = useState('');
   const [savingName, setSavingName] = useState(false);
+  const [nameError, setNameError] = useState('');
   const [isMobile, setIsMobile] = useState(false);
   const [isForceUpdating, setIsForceUpdating] = useState(false);
   const [forceUpdateTargetVersion, setForceUpdateTargetVersion] = useState('');
@@ -352,9 +353,10 @@ export default function App() {
 
   const handleSaveName = async () => {
     const trimmedName = nameInput.trim();
-    if (!trimmedName) return;
+    if (!trimmedName || savingName) return;
 
     setSavingName(true);
+    setNameError('');
     try {
       await updateCurrentProfile({ name: trimmedName });
       setWelcomeName(trimmedName);
@@ -362,6 +364,7 @@ export default function App() {
       setShowWelcomeModal(true);
     } catch (err) {
       console.error('Error saving name:', err);
+      setNameError(getAuthErrorMessage(err, 'Could not save your name. Try again.'));
     } finally {
       setSavingName(false);
     }
@@ -446,18 +449,28 @@ export default function App() {
   };
 
   const togglePlay = () => {
-    if (!audioRef.current) return;
+    const audio = audioRef.current;
+    if (!audio) return;
     if (!audioLoaded) ensureAudioLoaded();
-    try {
-      if (isPlaying) {
-        audioRef.current.pause();
-      } else {
-        audioRef.current.play();
-      }
-      setIsPlaying((prev) => !prev);
-    } catch (err) {
-      console.warn('Audio playback failed:', err);
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+      return;
     }
+    // play() is asynchronous and can be refused (no gesture yet, the file not
+    // reachable offline): only a song that actually started counts as playing.
+    let started;
+    try {
+      started = Promise.resolve(audio.play());
+    } catch (err) {
+      started = Promise.reject(err);
+    }
+    started
+      .then(() => setIsPlaying(true))
+      .catch((err) => {
+        console.warn('Audio playback failed:', err);
+        setIsPlaying(false);
+      });
   };
 
   // Splash is an overlay, not a blocking early-return: the real screen underneath
@@ -800,7 +813,7 @@ export default function App() {
               <input
                 type="text"
                 value={nameInput}
-                onChange={(e) => setNameInput(e.target.value)}
+                onChange={(e) => { setNameInput(e.target.value); setNameError(''); }}
                 placeholder="Enter your name"
                 autoFocus
                 onKeyDown={(e) => e.key === 'Enter' && handleSaveName()}
@@ -817,6 +830,9 @@ export default function App() {
                   textAlign: 'center'
                 }}
               />
+              {nameError && (
+                <p role="alert" style={{ margin: '0 0 12px 0', fontSize: '13px', color: 'var(--error-color)' }}>{nameError}</p>
+              )}
               <button
                 onClick={handleSaveName}
                 disabled={!nameInput.trim() || savingName}
