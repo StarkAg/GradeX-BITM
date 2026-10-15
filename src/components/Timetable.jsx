@@ -144,14 +144,18 @@ export default function Timetable() {
 
   async function downloadPDF() {
     setLoading(true);
+    // Declared out here so the `finally` below can put the schedule back
+    // whatever went wrong between pulling it out of the page and finishing.
+    let timetableElement = null;
+    let origStyles = null;
     try {
-      let timetableElement = document.querySelector('.timetable-container');
+      timetableElement = document.querySelector('.timetable-container');
       if (!timetableElement) throw new Error('Timetable not found');
       
       const desktopWidth = 900;
 
       // Save original styles
-      const origStyles = {
+      origStyles = {
         width: timetableElement.style.width,
         maxWidth: timetableElement.style.maxWidth,
         position: timetableElement.style.position,
@@ -179,10 +183,11 @@ export default function Timetable() {
         windowWidth: desktopWidth
       });
 
-      // Restore original styles
+      // Back in the page before the file is built: nothing below needs it out.
       Object.keys(origStyles).forEach(key => {
         timetableElement.style[key] = origStyles[key] || '';
       });
+      origStyles = null;
 
         const blob = await (await fetch(canvas.toDataURL('image/jpeg', 0.95))).blob();
         const url = URL.createObjectURL(blob);
@@ -195,6 +200,11 @@ export default function Timetable() {
       console.error('Download error:', err);
       alert('Failed to generate image');
     } finally {
+      if (timetableElement && origStyles) {
+        Object.keys(origStyles).forEach(key => {
+          timetableElement.style[key] = origStyles[key] || '';
+        });
+      }
       setLoading(false);
     }
   }
