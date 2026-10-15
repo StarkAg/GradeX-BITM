@@ -6,6 +6,8 @@ import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
 import { convex } from './lib/convex';
 import './styles.css';
+import './styles/liquid-glass.css';
+import { initLiquidGlass } from './lib/liquidGlass.js';
 
 // vite-plugin-pwa does not register a worker in development, but a worker
 // registered by an earlier production-like local build can still control this
@@ -18,6 +20,8 @@ if (import.meta.env.DEV && 'serviceWorker' in navigator) {
     .then((cacheNames) => Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName))))
     .catch((error) => console.warn('[Dev] Could not clear an old service worker cache:', error));
 }
+
+initLiquidGlass();
 
 const savedTheme = localStorage.getItem('gradex-theme') || 'dark';
 document.documentElement.setAttribute('data-theme', savedTheme);

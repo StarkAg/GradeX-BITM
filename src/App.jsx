@@ -213,7 +213,7 @@ export default function App() {
   // Detect mobile devices
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth <= 768);
+      setIsMobile(window.innerWidth <= 1024);
     };
 
     checkMobile();
@@ -590,7 +590,7 @@ export default function App() {
     return (
     <>
       <div className="app-container" style={{ opacity: 1, transition: 'opacity 0.5s ease-in' }}>
-      <header className="app-header single" style={{ 
+      <header className="app-header single gx-glass gx-glass--top" style={{ 
         display: 'flex', 
         justifyContent: 'space-between', 
         alignItems: 'center', 
@@ -603,7 +603,6 @@ export default function App() {
         left: 0,
         right: 0,
         zIndex: 1000,
-        background: 'var(--bg-primary)',
         boxSizing: 'border-box'
       }}>
           <div className="app-header-left">
@@ -706,7 +705,7 @@ export default function App() {
           flex: 1,
           marginLeft: isMobile ? '0' : (isSidebarCollapsed ? '60px' : '200px'),
           padding: isMobile ? '6px 8px' : '6px 10px',
-          paddingBottom: isMobile ? '80px' : '6px',
+          paddingBottom: isMobile ? 'var(--gx-mobile-nav-clearance)' : '6px',
           overflowY: 'auto',
           transition: 'margin-left 0.3s ease',
           position: 'relative',

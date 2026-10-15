@@ -96,6 +96,17 @@
   }
 }
 
+/* Type scale and faces the navigation (Navigation.jsx, liquid-glass.css) reads;
+   the same values as GradeX. */
+:root {
+  --gradex-font-brand: 'AmericanCaptain', 'Space Grotesk', sans-serif;
+  --gradex-font-body: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --gradex-text-2xs: 9px;
+  --gradex-text-xs: 11px;
+  --gradex-text-sm: 13px;
+  --gradex-text-md: 16px;
+}
+
 /* CSS Variables for Dark Theme (Default) */
 :root[data-theme="dark"],
 :root:not([data-theme]) {
