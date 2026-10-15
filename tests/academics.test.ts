@@ -303,3 +303,33 @@ describe('account deletion', () => {
     expect(Object.values(left).every((count) => count === 0)).toBe(true);
   });
 });
+
+describe('a student who has set up their own subjects', () => {
+  // A student in another section clears the starter classes and keeps one
+  // subject of their own, not yet placed in the week. The starter timetable is
+  // only for an account that has never saved anything: handed back here, its
+  // cells show as taken slots in the editor, under subjects they do not have.
+  it('keeps an empty timetable empty instead of showing the starter one', async () => {
+    const { user } = await signedIn();
+    const emptyWeek = Object.fromEntries(
+      ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map((day) => [day, Array(10).fill(null)])
+    );
+    await user.mutation(api.academics.saveAcademicState, {
+      subjects: [{ name: 'Marketing', code: 'MKT', room: 'LH-2' }],
+      timetable: emptyWeek,
+    });
+
+    const snapshot = await user.query(api.academics.getCurrentSnapshot, {});
+    expect(snapshot.subjects.map((subject: any) => subject.code)).toEqual(['MKT']);
+    const placed = Object.values(snapshot.timetable).flat().filter(Boolean);
+    expect(placed).toEqual([]);
+  });
+
+  it('still shows the starter timetable to an account that has saved nothing', async () => {
+    const t = convexTest(schema, modules);
+    const { user } = await addUser(t, 'new@example.com');
+    const snapshot = await user.query(api.academics.getCurrentSnapshot, {});
+    expect(snapshot.subjects.length).toBeGreaterThan(0);
+    expect(Object.values(snapshot.timetable).flat().filter(Boolean).length).toBeGreaterThan(0);
+  });
+});

@@ -168,7 +168,10 @@ export const getCurrentSnapshot = query({
     }));
 
     const timetable = buildEmptyTimetable();
-    const sourceEntries = timetableDocs.length
+    // The starter timetable is for an account that has saved nothing yet. Once
+    // it has its own subjects an empty week is its choice, not a gap to fill:
+    // starter cells would show as taken slots under subjects it does not have.
+    const sourceEntries = timetableDocs.length || subjectDocs.length
       ? timetableDocs
       : Object.entries(DEFAULT_TIMETABLE).flatMap(([day, slots]) =>
           slots
