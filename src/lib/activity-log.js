@@ -8,6 +8,18 @@ function getLogKey() {
   return userId ? `gradex_activity_log_${userId}` : 'gradex_activity_log';
 }
 
+// The stored log, or an empty one when what is there is not a list (a half
+// written value, an older build). Callers record an activity right after a
+// save, inside the same try block, so a log that cannot be read must not throw.
+function readLog(logKey) {
+  try {
+    const stored = JSON.parse(localStorage.getItem(logKey) || '[]');
+    return Array.isArray(stored) ? stored : [];
+  } catch {
+    return [];
+  }
+}
+
 export function logActivity(type, details) {
   const timestamp = new Date().toISOString();
   const logEntry = {
@@ -19,7 +31,7 @@ export function logActivity(type, details) {
 
   // Get existing logs for current user
   const logKey = getLogKey();
-  const existingLogs = JSON.parse(localStorage.getItem(logKey) || '[]');
+  const existingLogs = readLog(logKey);
   
   // Add new entry at the beginning
   existingLogs.unshift(logEntry);
@@ -52,8 +64,7 @@ export function logActivity(type, details) {
 }
 
 export function getActivityLog() {
-  const logKey = getLogKey();
-  return JSON.parse(localStorage.getItem(logKey) || '[]');
+  return readLog(getLogKey());
 }
 
 export function clearActivityLog() {

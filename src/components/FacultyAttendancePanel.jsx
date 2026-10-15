@@ -40,7 +40,12 @@ export default function FacultyAttendancePanel() {
   const [loading, setLoading] = useState(true);
   const [attendance, setAttendance] = useState({});
   const [showStudentList, setShowStudentList] = useState(false);
-  const [currentDate, setCurrentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [currentDate, setCurrentDate] = useState(() => {
+    // Today on this device's clock: toISOString() is the UTC date, which in
+    // India is still yesterday from midnight until 05:30.
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
   const [savingStates, setSavingStates] = useState({}); // Track saving state for each student
   const [saveToast, setSaveToast] = useState(null); // Toast notification
 

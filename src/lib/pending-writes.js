@@ -217,6 +217,10 @@ export function countPendingOps() {
   return ownerId ? readPendingOps().filter((op) => op.owner === ownerId).length : 0;
 }
 
+// Strictly increasing, so a write can always be told from the one it replaced
+// even when both are made within the same millisecond.
+let lastQueuedAt = 0;
+
 // Applies the write to the offline copy and queues it for the server.
 // `type` is one of: academic, total, daily, holiday.
 export function queueLocalWrite(type, args, ownerId) {
@@ -229,7 +233,8 @@ export function queueLocalWrite(type, args, ownerId) {
   const key = pendingOpKey(type, args);
   // A newer write to the same thing replaces the older one.
   const ops = readPendingOps().filter((op) => !(op.owner === owner && op.key === key));
-  ops.push({ owner, key, type, args, queuedAt: Date.now(), attempts: 0 });
+  lastQueuedAt = Math.max(Date.now(), lastQueuedAt + 1);
+  ops.push({ owner, key, type, args, queuedAt: lastQueuedAt, attempts: 0 });
   writePendingOps(ops);
   window.dispatchEvent(new Event('subjectsUpdated'));
   return true;
@@ -283,8 +288,13 @@ export async function flushPendingOps(send, userId) {
         const attempts = (next.attempts || 0) + 1;
         const rest = readPendingOps().filter((op) => !isSameOp(op));
         refusedThisPass.add(next.key);
-        writePendingOps(attempts >= MAX_PENDING_ATTEMPTS ? rest : [...rest, { ...next, attempts }]);
-        if (attempts >= MAX_PENDING_ATTEMPTS) {
+        // A newer write to the same thing was queued while this one was out.
+        // It has the final say; putting this one back behind it would send the
+        // older value last.
+        const replaced = rest.some((op) => op.owner === next.owner && op.key === next.key);
+        const giveUp = attempts >= MAX_PENDING_ATTEMPTS;
+        writePendingOps(giveUp || replaced ? rest : [...rest, { ...next, attempts }]);
+        if (giveUp && !replaced) {
           // Shown by OfflineIndicator: the change is on screen but will not
           // survive, and the student should know rather than find out later.
           window.dispatchEvent(new CustomEvent(SYNC_FEEDBACK_EVENT, {

@@ -122,6 +122,22 @@ describe('sending the queue', () => {
     expect(send.mock.calls.filter(([type]) => type === 'daily')).toHaveLength(3);
     expect(readPendingOps()).toEqual([]);
   });
+
+  it('does not bring back a refused write that a newer one has replaced', async () => {
+    const args = { date: '2026-08-03', subjectCode: 'RM' };
+    queueLocalWrite('daily', { ...args, status: 'present' });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // The student taps Absent while "present" is still on its way, and it is refused.
+    const send = vi.fn(async () => {
+      queueLocalWrite('daily', { ...args, status: 'absent' });
+      throw new Error('timed out');
+    });
+    await flushPendingOps(send, 'user_a');
+
+    // Only the newer mark may be left; sent after it, the old one would win.
+    expect(readPendingOps().map((op) => op.args.status)).toEqual(['absent']);
+  });
 });
 
 describe('the device copy', () => {
