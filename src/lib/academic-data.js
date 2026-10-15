@@ -262,16 +262,6 @@ export function useSetHoliday() {
   return useQueuedMutation('holiday');
 }
 
-export function useLogSocialClick() {
-  const { isAuthenticated } = useConvexAuth();
-  const mutation = useMutation(api.events.logSocialClick);
-
-  return async (args) => {
-    if (!isAuthenticated) return null;
-    return mutation(args);
-  };
-}
-
 export function useAdmin954Overview(enabled = true) {
   const { isAuthenticated } = useConvexAuth();
   return useQuery(api.admin.getAdmin954Overview, enabled && isAuthenticated ? {} : 'skip');
