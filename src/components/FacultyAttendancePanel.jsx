@@ -126,14 +126,17 @@ export default function FacultyAttendancePanel() {
     
     const dateKey = currentDate;
     const current = attendance[dateKey] || {};
-    const currentStatus = current[studentId];
+    // A date opened after the subject has no entry yet: that is unmarked too.
+    const currentStatus = current[studentId] ?? null;
     
     // Cycle: null -> true -> false -> null
     let newStatus;
-    if (currentStatus === null || currentStatus === false) {
+    if (currentStatus === null) {
       newStatus = true; // Mark present
-    } else {
+    } else if (currentStatus === true) {
       newStatus = false; // Mark absent
+    } else {
+      newStatus = null; // Back to unmarked
     }
 
     // Update local state immediately for instant feedback
@@ -714,7 +717,7 @@ export default function FacultyAttendancePanel() {
               {DEMO_STUDENTS.map((student, idx) => {
                 const dateKey = currentDate;
                 const current = attendance[dateKey] || {};
-                const status = current[student.id];
+                const status = current[student.id] ?? null;
                 const isPresent = status === true;
                 const isAbsent = status === false;
                 const saveKey = `${dateKey}-${student.id}`;
