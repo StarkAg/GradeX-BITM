@@ -619,7 +619,11 @@ export default function Navigation({ onToggle, isCollapsed, navItems, isConnecte
         className="gx-glass gx-glass--panel gx-glass--nav gx-mobile-nav-pill"
         style={{
           position: 'fixed',
-          bottom: 'max(16px, env(safe-area-inset-bottom, 0px))',
+          // Sit the pill low with a small gap. max(16px, inset) let the phone's
+          // home-indicator inset (~34px on iPhone) win and pushed it too high;
+          // this keeps a 10px floor and only partly counts the inset, so it
+          // clears the home indicator without floating up the screen.
+          bottom: 'max(10px, calc(env(safe-area-inset-bottom, 0px) - 18px))',
           left: '50%',
           right: 'auto',
           transform: 'translateX(-50%)',
