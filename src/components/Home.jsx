@@ -169,16 +169,16 @@ export default function Home() {
       maxWidth: '760px',
       margin: '0 auto',
       padding: isMobile ? '12px 10px' : 'clamp(20px, 4vw, 40px)',
-      paddingBottom: isMobile ? `calc(20px + env(safe-area-inset-bottom, 0px))` : '20px',
-      height: isMobile ? 'calc(100dvh - 50px - 70px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))' : 'calc(100vh - 55px)',
+      paddingBottom: isMobile ? '12px' : '20px',
+      // Match GradeX: on mobile the page is not a fixed-height box. It grows
+      // with its content and the scrolling <main> (which carries the nav-pill
+      // clearance as its bottom padding) does the scrolling, so the footer
+      // simply follows the last card and can never overlap it.
+      minHeight: isMobile ? 'auto' : 'calc(100vh - 55px)',
       display: 'flex',
       flexDirection: 'column',
-      // On mobile the list scrolls on its own (below), so the page itself does
-      // not. That keeps the "BIT Mesra, Lalpur" footer pinned under the list
-      // instead of sharing one scroll area with the cards, where it could ride
-      // up over the last card.
       justifyContent: isMobile ? 'flex-start' : 'center',
-      overflowY: isMobile ? 'hidden' : 'auto',
+      overflowY: isMobile ? 'visible' : 'auto',
       overflowX: 'hidden'
     }}>
       <div style={{
@@ -241,12 +241,9 @@ export default function Home() {
         flexDirection: 'column',
         gap: isMobile ? '9px' : '10px',
         width: '100%',
-        minHeight: 0,
-        // The scroll region on mobile: takes the space between the Marked bar
-        // and the footer, so many classes scroll here while the footer stays
-        // put. Natural flow on desktop.
-        flex: isMobile ? '1 1 auto' : 'none',
-        overflowY: isMobile ? 'auto' : 'visible',
+        // Natural flow: the cards push the footer down and the whole page
+        // scrolls inside <main>. No inner scroll region of its own.
+        flex: 'none',
         }}>
         {!snapshot ? (
           <div style={{
