@@ -173,8 +173,12 @@ export default function Home() {
       height: isMobile ? 'calc(100dvh - 50px - 70px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))' : 'calc(100vh - 55px)',
       display: 'flex',
       flexDirection: 'column',
+      // On mobile the list scrolls on its own (below), so the page itself does
+      // not. That keeps the "BIT Mesra, Lalpur" footer pinned under the list
+      // instead of sharing one scroll area with the cards, where it could ride
+      // up over the last card.
       justifyContent: isMobile ? 'flex-start' : 'center',
-      overflowY: 'auto',
+      overflowY: isMobile ? 'hidden' : 'auto',
       overflowX: 'hidden'
     }}>
       <div style={{
@@ -237,7 +241,12 @@ export default function Home() {
         flexDirection: 'column',
         gap: isMobile ? '9px' : '10px',
         width: '100%',
-        minHeight: 0
+        minHeight: 0,
+        // The scroll region on mobile: takes the space between the Marked bar
+        // and the footer, so many classes scroll here while the footer stays
+        // put. Natural flow on desktop.
+        flex: isMobile ? '1 1 auto' : 'none',
+        overflowY: isMobile ? 'auto' : 'visible',
         }}>
         {!snapshot ? (
           <div style={{
@@ -413,7 +422,8 @@ export default function Home() {
           color: '#fbbf24',
           fontSize: '12px',
           textAlign: 'center',
-          fontWeight: 500
+          fontWeight: 500,
+          flexShrink: 0
         }}>
           View Only Mode - Editing disabled
         </div>
@@ -423,7 +433,8 @@ export default function Home() {
         textAlign: 'center',
         fontSize: '12px',
         color: 'var(--text-tertiary)',
-        marginTop: isMobile ? '14px' : '22px'
+        marginTop: isMobile ? '12px' : '22px',
+        flexShrink: 0
       }}>
         BIT Mesra, Lalpur
       </p>
