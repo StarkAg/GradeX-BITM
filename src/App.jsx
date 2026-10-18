@@ -75,11 +75,24 @@ const NAV_ITEMS = [
 ];
 const AUDIO_URL = '/back-in-black.mp3';
 const CONVEX_HEALTH_POLL_MS = 20 * 1000;
-const SPLASH_PROGRESS_INTERVAL_MS = 20;
+const SPLASH_PROGRESS_INTERVAL_MS = 58;
 const SPLASH_PROGRESS_STEP = 4;
 const SPLASH_EXIT_DELAY_MS = 150;
 const SPLASH_TEXT_PAUSE_MS = 50;
 const SPLASH_TEXTS = ['INITIALIZING...'];
+// A "did you know" line under the splash, one picked at random per launch.
+// GradeX BITM features only -- nothing from the main GradeX app.
+const SPLASH_TIPS = [
+  "Mark your classes right from the Home screen.",
+  "Works offline. Your marks save on your phone, then sync.",
+  "Missed a day? Fix it from the Calendar.",
+  "You stay signed in. No more weekly logouts.",
+  "Manage your subjects and timetable in Schedule.",
+  "Tap the top bar to switch between dark and light.",
+  "Install GradeX BITM as an app on your phone.",
+  "More tabs are on the way: Marks, Mess Menu and more.",
+  "Made for BIT Mesra. By Stark.",
+];
 
 // The force-update check lives in its own component, inside its own error
 // boundary: useQuery throws during render when the server rejects a query, and
@@ -108,6 +121,7 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioLoaded, setAudioLoaded] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
+  const [splashTip] = useState(() => SPLASH_TIPS[Math.floor(Math.random() * SPLASH_TIPS.length)]);
   const [loadingText, setLoadingText] = useState('');
   const [progress, setProgress] = useState(0);
   const [theme, setTheme] = useState(() => {
@@ -576,6 +590,14 @@ export default function App() {
             transition: 'width 0.1s linear'
           }} />
           </div>
+
+          {/* Did-you-know tip (one per launch) */}
+          {splashTip && (
+            <div style={{ marginTop: '30px', maxWidth: '320px', padding: '0 24px', textAlign: 'center', color: 'var(--splash-text)', fontFamily: 'Space Grotesk, monospace' }}>
+              <div style={{ fontSize: '9px', letterSpacing: '0.24em', textTransform: 'uppercase', opacity: 0.45, marginBottom: '8px' }}>Did you know</div>
+              <div style={{ fontSize: '12.5px', lineHeight: 1.55, opacity: 0.72 }}>{splashTip}</div>
+            </div>
+          )}
 
           {/* Tech corners */}
         <div style={{ position: 'absolute', top: '20px', left: '20px', width: '40px', height: '40px', borderTop: '2px solid var(--splash-overlay)', borderLeft: '2px solid var(--splash-overlay)' }} />
