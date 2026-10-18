@@ -81,6 +81,12 @@ export default function ManualAttendance() {
     return Math.max(0, Math.floor((100 * attended - 75 * conducted) / 75));
   };
 
+  // Every figure sits in its own bordered box so the card reads as a row of
+  // aligned boxes, matching the main GradeX attendance card.
+  const statBoxStyle = { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1px', padding: '7px 4px', boxSizing: 'border-box', border: '1px solid var(--border-color)', borderRadius: '8px', minWidth: 0 };
+  const statNumStyle = { fontSize: '17px', fontWeight: 800, lineHeight: 1.05, fontVariantNumeric: 'tabular-nums' };
+  const statLabelStyle = { fontSize: '10.5px', fontWeight: 600, color: 'var(--text-secondary)' };
+
   if (!snapshot) {
     return <div style={{ textAlign: 'center', padding: '40px' }}><div style={{ width: '40px', height: '40px', border: '3px solid var(--border-color)', borderTopColor: 'var(--text-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }} /><style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style></div>;
   }
@@ -167,64 +173,63 @@ export default function ManualAttendance() {
           const needed = classesNeeded(attendance.attended, attendance.conducted);
           const canSkip = classesCanSkip(attendance.attended, attendance.conducted);
 
+          const absent = Math.max(0, attendance.conducted - attendance.attended);
+          const okColor = percentage >= 75;
+
           return (
-            <div key={subject.code} style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: isMobile ? '12px' : '16px', borderLeft: `4px solid ${getSubjectColor(idx)}`, display: 'flex', flexDirection: 'column', height: '100%' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-                <div>
-                  <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 2px 0' }}>{subject.name}</h3>
+            <div key={subject.code} style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: isMobile ? '12px' : '16px', borderLeft: `3px solid ${getSubjectColor(idx)}`, display: 'flex', flexDirection: 'column', gap: '8px', height: '100%' }}>
+              {/* Title + big percentage */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                <div style={{ minWidth: 0 }}>
+                  <h3 style={{ fontSize: '14.5px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 2px 0', lineHeight: 1.25 }}>{subject.name}</h3>
                   <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: 0 }}>{subject.code} • {subject.room}</p>
                 </div>
+                <div style={{ fontSize: '24px', fontWeight: 800, lineHeight: 1, color: statusColor, fontVariantNumeric: 'tabular-nums', flex: '0 0 auto' }}>{percentage.toFixed(1)}%</div>
               </div>
 
-              <div style={{ textAlign: 'center', padding: '10px 0', marginBottom: '10px', background: 'var(--hover-bg)', borderRadius: '6px' }}>
-                <div style={{ fontSize: '28px', fontWeight: 700, color: statusColor, lineHeight: 1 }}>{percentage.toFixed(1)}%</div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
-                <div style={{ background: 'var(--hover-bg)', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
-                  <div style={{ fontSize: '9px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Attended</div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                    {showControls && !viewOnly && (
-                      <button onClick={() => updateAttendance(subject.code, -1, 0)} disabled={attendance.attended <= 0} style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-primary)', cursor: attendance.attended <= 0 ? 'not-allowed' : 'pointer', opacity: attendance.attended <= 0 ? 0.4 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>−</button>
-                    )}
-                    <span style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', minWidth: '28px' }}>{attendance.attended}</span>
-                    {showControls && !viewOnly && (
-                      <button onClick={() => updateAttendance(subject.code, 1, 1)} style={{ width: '24px', height: '24px', borderRadius: '4px', border: 'none', background: '#4ade80', color: '#000', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }} title="Mark Present">+</button>
-                    )}
-                  </div>
+              {/* Present / absent / total boxes + the Need / Can miss box */}
+              <div style={{ display: 'flex', alignItems: 'stretch', gap: '8px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '6px', flex: '1 1 auto', minWidth: 0 }}>
+                  <span style={statBoxStyle}><span style={{ ...statNumStyle, color: '#4ade80' }}>{attendance.attended}</span><span style={statLabelStyle}>present</span></span>
+                  <span style={statBoxStyle}><span style={{ ...statNumStyle, color: '#f87171' }}>{absent}</span><span style={statLabelStyle}>absent</span></span>
+                  <span style={statBoxStyle}><span style={{ ...statNumStyle, color: 'var(--text-primary)' }}>{attendance.conducted}</span><span style={statLabelStyle}>total</span></span>
                 </div>
-                <div style={{ background: 'var(--hover-bg)', borderRadius: '6px', padding: '8px', textAlign: 'center' }}>
-                  <div style={{ fontSize: '9px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Conducted</div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                    {showControls && !viewOnly && (
-                      <button onClick={() => updateAttendance(subject.code, 0, -1)} disabled={attendance.conducted <= 0 || attendance.conducted <= attendance.attended} style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-primary)', cursor: (attendance.conducted <= 0 || attendance.conducted <= attendance.attended) ? 'not-allowed' : 'pointer', opacity: (attendance.conducted <= 0 || attendance.conducted <= attendance.attended) ? 0.4 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>−</button>
-                    )}
-                    <span style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', minWidth: '28px' }}>{attendance.conducted}</span>
-                    {showControls && !viewOnly && (
-                      <button onClick={() => updateAttendance(subject.code, 0, 1)} style={{ width: '24px', height: '24px', borderRadius: '4px', border: 'none', background: '#60a5fa', color: '#000', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }} title="Add Class">+</button>
-                    )}
+                {attendance.conducted > 0 && (
+                  <div style={{ flex: '0 0 auto', width: '112px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1px', padding: '8px', boxSizing: 'border-box', border: `1px solid ${okColor ? 'rgba(74,222,128,0.4)' : 'rgba(248,113,113,0.4)'}`, borderRadius: '8px', background: okColor ? 'rgba(74,222,128,0.08)' : 'rgba(248,113,113,0.08)', color: okColor ? '#4ade80' : '#f87171' }}>
+                    <span style={{ fontSize: '10.5px', fontWeight: 600 }}>{okColor ? 'Can miss' : 'Need'}</span>
+                    <span style={{ fontSize: '24px', fontWeight: 900, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{okColor ? canSkip : needed}</span>
+                    <span style={{ fontSize: '10px', fontWeight: 600, opacity: 0.85 }}>{okColor ? 'classes' : 'more classes'}</span>
                   </div>
-                </div>
+                )}
               </div>
 
+              {/* Progress bar against the 75% line */}
               {attendance.conducted > 0 && (
-                <div style={{ 
-                  fontSize: isMobile ? '11px' : '13px', 
-                  padding: isMobile ? '10px' : '12px', 
-                  borderRadius: '8px', 
-                  background: percentage >= 75 ? 'rgba(74, 222, 128, 0.15)' : 'rgba(248, 113, 113, 0.15)', 
-                  border: `2px solid ${percentage >= 75 ? '#4ade80' : '#f87171'}`,
-                  color: percentage >= 75 ? '#4ade80' : '#f87171', 
-                  textAlign: 'center',
-                  fontWeight: 700,
-                  marginTop: 'auto',
-                  boxShadow: `0 2px 8px ${percentage >= 75 ? 'rgba(74, 222, 128, 0.2)' : 'rgba(248, 113, 113, 0.2)'}`
-                }}>
-                  {percentage >= 75 ? (
-                    <span>Margin: {canSkip} class{canSkip !== 1 ? 'es' : ''}</span>
-                  ) : (
-                    <span>Need: {needed} class{needed !== 1 ? 'es' : ''}</span>
-                  )}
+                <div>
+                  <div style={{ position: 'relative', height: '6px', borderRadius: '3px', background: 'var(--border-color)' }}>
+                    <div style={{ width: `${Math.max(0, Math.min(100, percentage))}%`, height: '100%', borderRadius: '3px', background: statusColor }} />
+                    <div style={{ position: 'absolute', left: '75%', top: '-2px', bottom: '-2px', width: 0, borderLeft: '1px dashed var(--text-secondary)' }} />
+                  </div>
+                  <div style={{ position: 'relative', height: '13px', marginTop: '3px' }}>
+                    <span style={{ position: 'absolute', left: 0, fontSize: '9.5px', fontWeight: 700, color: statusColor, fontVariantNumeric: 'tabular-nums' }}>{percentage.toFixed(1)}%</span>
+                    <span style={{ position: 'absolute', left: '75%', transform: 'translateX(-50%)', fontSize: '9.5px', color: 'var(--text-tertiary)' }}>75%</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Editing controls (shown via Preset) */}
+              {showControls && !viewOnly && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: 'auto' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'var(--hover-bg)', borderRadius: '8px', padding: '6px' }}>
+                    <button onClick={() => updateAttendance(subject.code, -1, 0)} disabled={attendance.attended <= 0} style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-primary)', cursor: attendance.attended <= 0 ? 'not-allowed' : 'pointer', opacity: attendance.attended <= 0 ? 0.4 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>−</button>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Present</span>
+                    <button onClick={() => updateAttendance(subject.code, 1, 1)} style={{ width: '24px', height: '24px', borderRadius: '4px', border: 'none', background: '#4ade80', color: '#000', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }} title="Mark Present">+</button>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'var(--hover-bg)', borderRadius: '8px', padding: '6px' }}>
+                    <button onClick={() => updateAttendance(subject.code, 0, -1)} disabled={attendance.conducted <= 0 || attendance.conducted <= attendance.attended} style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-primary)', cursor: (attendance.conducted <= 0 || attendance.conducted <= attendance.attended) ? 'not-allowed' : 'pointer', opacity: (attendance.conducted <= 0 || attendance.conducted <= attendance.attended) ? 0.4 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>−</button>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Total</span>
+                    <button onClick={() => updateAttendance(subject.code, 0, 1)} style={{ width: '24px', height: '24px', borderRadius: '4px', border: 'none', background: '#60a5fa', color: '#000', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }} title="Add Class">+</button>
+                  </div>
                 </div>
               )}
             </div>
