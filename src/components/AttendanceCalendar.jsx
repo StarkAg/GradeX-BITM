@@ -4,6 +4,7 @@ import { DEFAULT_TIMETABLE, getSubjectColor } from '../lib/subjects';
 import { buildDayClasses } from '../lib/attendance-codes';
 import { logActivity } from '../lib/activity-log';
 import { isViewOnlyMode } from '../lib/view-only';
+import { OFFICIAL_HOLIDAYS } from '../lib/official-holidays';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -138,7 +139,8 @@ export default function AttendanceCalendar() {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   };
 
-  const isHoliday = (date) => Boolean(holidays[formatDateKey(date)]);
+  const officialHoliday = (date) => OFFICIAL_HOLIDAYS[formatDateKey(date)];
+  const isHoliday = (date) => Boolean(officialHoliday(date) || holidays[formatDateKey(date)]);
 
   // Mark / unmark a whole day as a holiday. Independent of attendance - a
   // holiday can be set on any date, including ones already marked.
@@ -427,7 +429,7 @@ export default function AttendanceCalendar() {
                 {/* Holiday - diagonal strike across the whole card */}
                 {holiday && (
                   <div
-                    title={holidays[formatDateKey(date)] || 'Holiday'}
+                    title={officialHoliday(date) || holidays[formatDateKey(date)] || 'Holiday'}
                     style={{
                       position: 'absolute',
                       top: 0,
@@ -659,7 +661,7 @@ export default function AttendanceCalendar() {
                   </p>
                   {isHoliday(selectedDate) && (
                     <span style={{ display: 'inline-block', marginTop: '6px', padding: '3px 8px', borderRadius: '999px', background: 'rgba(245, 158, 11, 0.15)', border: `1px solid ${HOLIDAY_COLOR}`, color: HOLIDAY_COLOR, fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      Holiday
+                      {officialHoliday(selectedDate) || 'Holiday'}
                     </span>
                   )}
                 </div>
@@ -698,7 +700,7 @@ export default function AttendanceCalendar() {
                   </button>
                 </div>
               )}
-              {!viewOnly && (
+              {!viewOnly && !officialHoliday(selectedDate) && (
                 <button
                   onClick={() => toggleHoliday(selectedDate)}
                   style={{
